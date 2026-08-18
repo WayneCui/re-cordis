@@ -1,0 +1,1 @@
+Moved Permanently. Redirecting to https://raw.githubusercontent.com/cordiverse/cordis/master/packages/core/README.md
