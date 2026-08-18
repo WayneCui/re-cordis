@@ -74,7 +74,10 @@ make-child-ctx: func [root-ctx [object! none!] props [map!] /local new root-ref]
         new/reflect: root-ctx/reflect
         ; logger: 若 logger.reb 已加载则重建 (绑定新 ctx, 对齐上游新 Context 新 LoggerService,
         ; 使 intercept/isolate 后的 logger 能解析新 chain); 否则共享父 (旧测试无 logger 依赖)
-        new/logger: either value? 'make-logger-service [make-logger-service new][root-ctx/logger]
+        new/logger: either all [
+            value? 'make-logger-service
+            select props 'intercept-chain
+        ] [make-logger-service new] [root-ctx/logger]
         new/filter: select props 'filter
         new/root-ref: root-ref
         ; 未知字段存入 extra (对象不能动态添加字段)

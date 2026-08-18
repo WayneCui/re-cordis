@@ -92,6 +92,11 @@ make-reflect-service: func [root-ctx [object!] /local svc] [
             either impl [impl/value][none]
         ]
 
+        ; provide during LOADING skips notify; fiber-notify-active calls this on ACTIVE
+        notify: func [names [block!] act-ctx [object!]] [
+            reflect-notify self names act-ctx
+        ]
+
         set: func [name [word!] value act-ctx [object!] /local key impl] [
             key: isolate-store-key act-ctx name
             impl: select self/store key
