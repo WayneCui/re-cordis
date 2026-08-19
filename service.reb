@@ -1,21 +1,21 @@
 REBOL []
 
 ; ============================================================
-; service.reb — cordis Service 基类的 Rebol3 移植 (P7)
-; 上游: ref/core/service.ts (80 行) + logger.ts _resolveConfig (intercept 消费)
+; service.reb - Rebol3 port of the cordis Service base class (P7)
+; Upstream: ref/core/service.ts (80 lines) + logger.ts _resolveConfig (intercept consumer)
 ;
-; 语义映射:
-;   - JS class extends Service → Rebol 服务对象 + make-service 工厂
-;   - 构造自动注册: super(ctx, name) → reflect.provide(name, self, check)
-;   - resolveConfig(base, head) → 遍历 ctx/intercept-chain 收集本服务
-;     name 的配置 + base/head, 合并 (Config.merge 优先, 否则后者覆盖前者)
-;   - symbols (init/check/config/invoke/extend/tracker) → 约定字段:
-;       init   object! [call: func [args this-arg] [...]]   (插件加载时执行)
+; Semantic mapping:
+;   - JS class extends Service -> Rebol service object + make-service factory
+;   - Auto-registration during construction: super(ctx, name) -> reflect.provide(name, self, check)
+;   - resolveConfig(base, head) -> walk ctx/intercept-chain to collect config for this service name
+;     + base/head, then merge them (Config.merge takes priority, otherwise later values overwrite earlier ones)
+;   - symbols (init/check/config/invoke/extend/tracker) -> conventional fields:
+;       init   object! [call: func [args this-arg] [...]]   (executed when the plugin loads)
 ;       check  object! [call: ...]                          (reflect check)
-;       Config object! [merge: wrapper] 或 map!             (配置合并/默认)
-;   - 无 class/原型链: 服务对象字段自包含, 方法引用 self
+;       Config object! [merge: wrapper] or map!             (config merge/defaults)
+;   - No class/prototype chain: service object fields are self-contained and methods reference self
 ;
-; 约束: make map! 用 put (block 值会被嵌套 map 解析); 回调一律 wrapper 对象
+; Constraints: use put with make map! (block values are parsed as nested maps); callbacks are always wrapper objects
 ; ============================================================
 
 do %./utils.reb
@@ -26,52 +26,52 @@ do %./registry.reb
 do %./context.reb
 
 ; ------------------------------------------------------------
-; Service 构造 — 注册服务到 reflect + 注入 ctx/name
-; 上游: super(ctx, name) → this.name = name; reflect.provide(name, self, check)
-; Rebol: make-service ctx name svc-obj (名字显式传, 对齐 super(ctx, name))
-; svc-obj 约定 (用户构造, 必须声明字段):
-;   name: none   (构造时注入 word!)
-;   ctx: none    (构造时注入)
-;   check: object! [call: ...] (可选, 服务值检查)
-;   init: object! [call: ...]  (可选, 插件加载钩子 — 用户自行在 apply 调用)
-;   Config: object! [merge: wrapper] (可选, resolveConfig 合并器)
+; Service construction - register the service into reflect + inject ctx/name
+; Upstream: super(ctx, name) -> this.name = name; reflect.provide(name, self, check)
+; Rebol: make-service ctx name svc-obj (name is passed explicitly, matching super(ctx, name))
+; svc-obj convention (user-constructed, required fields):
+;   name: none   (word! injected during construction)
+;   ctx: none    (injected during construction)
+;   check: object! [call: ...] (optional, service value check)
+;   init: object! [call: ...]  (optional, plugin load hook - user calls it from apply)
+;   Config: object! [merge: wrapper] (optional, resolveConfig merger)
 ; ------------------------------------------------------------
 
 make-service: func [ctx [object!] name [word!] svc-obj [object!] /local check] [
     svc-obj/ctx: ctx
     svc-obj/name: name
-    ; 注册服务 (check 原样传递, reflect.provide 的 check 参数就是 wrapper 对象)
+    ; Register the service (pass check as-is; reflect.provide receives the wrapper object directly)
     check: select svc-obj 'check
     ctx/reflect/provide name svc-obj check ctx
     svc-obj
 ]
 
 ; ------------------------------------------------------------
-; Service.resolveConfig(base, head) 移植
-; 上游: 遍历 intercept 原型链收集 name 的 config, 逆序 unshift (根在前),
-;       base unshift 最前, head push 最后; Config.merge 或 Object.assign
-; Rebol: intercept-chain = [leaf ... root] block, 顺序遍历收集,
-;       configs = [base 根 ... 叶 head], 合并时后者覆盖前者
+; Port of Service.resolveConfig(base, head)
+; Upstream: walk the intercept prototype chain to collect config for name, unshift in reverse order
+;       (root first), base unshifted to the front, head pushed to the end; then Config.merge or Object.assign
+; Rebol: intercept-chain = [leaf ... root] block, collect by walking in order,
+;       so configs = [base root ... leaf head], where later values overwrite earlier ones during merge
 ; ------------------------------------------------------------
 
 service-resolve-config: func [svc [object!] base head /local chain configs m cfg conf mw merged] [
     chain: select svc/ctx 'intercept-chain
     unless chain [chain: copy []]
     configs: copy []
-    ; 从叶到根遍历, insert 头部 → configs = [根 ... 叶] (上游 unshift 语义)
+    ; Walk from leaf to root, inserting at the head -> configs = [root ... leaf] (upstream unshift semantics)
     foreach m chain [
         cfg: select m svc/name
         if not none? cfg [insert configs cfg]
     ]
     if not none? base [insert configs base]
     if not none? head [append configs head]
-    ; Config.merge 优先 (wrapper 对象)
+    ; Config.merge takes priority (wrapper object)
     conf: select svc 'Config
     if conf [
         mw: select conf 'merge
         if mw [return mw/call configs none]
     ]
-    ; 默认合并: 后者覆盖前者
+    ; Default merge: later values overwrite earlier ones
     merged: make map! []
     foreach m configs [
         if map? m [
@@ -82,10 +82,10 @@ service-resolve-config: func [svc [object!] base head /local chain configs m cfg
 ]
 
 ; ------------------------------------------------------------
-; Service.extend(props) 移植 — 复制服务实例 + 覆盖字段
-; 上游: Object.create(this) + Object.assign(props)
-; Rebol: make-service 包装新对象 (引用原 ctx), props 字段经 extra 存储
-; 简化: 直接创建新对象, 复制已知字段 (自包含字段列表)
+; Port of Service.extend(props) - copy the service instance + override fields
+; Upstream: Object.create(this) + Object.assign(props)
+; Rebol: make-service wraps a new object (reusing the original ctx), unknown props go into extra
+; Simplified: create a new object directly and copy known fields (self-contained field list)
 ; ------------------------------------------------------------
 
 service-extend: func [svc [object!] props [map!] /local new k v] [
@@ -93,9 +93,9 @@ service-extend: func [svc [object!] props [map!] /local new k v] [
         ctx: svc/ctx
         name: svc/name
         value: none
-        extra: make map! []   ; 未知字段 (对象不能动态加字段)
+        extra: make map! []   ; unknown fields (objects cannot add fields dynamically)
     ]
-    ; 复制已知字段 (自包含列表)
+    ; Copy known fields (self-contained list)
     foreach k [ctx name value] [
         v: select svc k
         if not none? v [set-path [new k] v]
@@ -107,9 +107,9 @@ service-extend: func [svc [object!] props [map!] /local new k v] [
 ]
 
 ; ------------------------------------------------------------
-; Service.filter(ctx) 移植 — 同 isolate 标签过滤
-; 上游: ctx[symbols.isolate][name] === this.ctx[symbols.isolate][name]
-; Rebol: ctx-isolate-label (reflect.reb) 比较
+; Port of Service.filter(ctx) - filter by matching isolate labels
+; Upstream: ctx[symbols.isolate][name] === this.ctx[symbols.isolate][name]
+; Rebol: compare via ctx-isolate-label (reflect.reb)
 ; ------------------------------------------------------------
 
 service-filter: func [svc [object!] other [object!]] [

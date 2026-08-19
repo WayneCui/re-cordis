@@ -1,9 +1,9 @@
 REBOL []
 
 ; ============================================================
-; test/context-test.reb — context.reb 行为测试 (P6)
-; 移植自 ref/tests/isolate.spec.ts (同步版)
-; 运行: rebol3 -s test/context-test.reb
+; test/context-test.reb - behavior tests for context.reb (P6)
+; Ported from ref/tests/isolate.spec.ts (synchronous version)
+; Run: rebol3 -s test/context-test.reb
 ; ============================================================
 
 do %../utils.reb
@@ -37,7 +37,7 @@ make-stub-logger: func [] [
 ]
 
 ; ------------------------------------------------------------
-; Test 1: 构造顺序 + Context.is
+; Test 1: construction order + Context.is
 ; ------------------------------------------------------------
 
 root1: make-context
@@ -50,7 +50,7 @@ assert context-is root1 "Context.is 识别 root"
 assert not context-is 42 "Context.is 拒绝非 ctx"
 
 ; ------------------------------------------------------------
-; Test 2: 隔离 — root/ctx1/ctx2 各自 provide, 互不可见
+; Test 2: isolation - root/ctx1/ctx2 each provide independently and remain invisible to one another
 ; ------------------------------------------------------------
 
 order2: copy []
@@ -82,7 +82,7 @@ assert equal? fiber-state/ACTIVE fbs2-0/1/state "root 区插件 ACTIVE"
 
 d2-1: ctx2a/reflect/provide 'foo 200 none ctx2a
 assert equal? 2 length? order2 "ctx1 provide → 仅 ctx1 区插件启动"
-; ctx1 区插件状态 (按 isolate 标签定位, 不能按遍历顺序取最后一个)
+; Plugin state for the ctx1 zone (locate by isolate label, do not assume it is the last by traversal order)
 label2a: select ctx2a/isolate-map 'foo
 fbc2a: none
 foreach rt2a ctx2a/registry/values [
@@ -102,7 +102,7 @@ d2-2: ctx2b/reflect/provide 'foo 300 none ctx2b
 assert equal? 4 length? order2 "ctx2 provide → ctx2 区插件启动"
 
 ; ------------------------------------------------------------
-; Test 3: 共享标签 — 同 label 的 ctx 共享服务
+; Test 3: shared label - ctx instances with the same label share the service
 ; ------------------------------------------------------------
 
 order3: copy []
@@ -130,7 +130,7 @@ d3/dispose
 assert equal? 4 length? order3 "unprovide → 两个插件都停止"
 
 ; ------------------------------------------------------------
-; Test 4: extend — 子 ctx 共享服务, 可覆盖字段
+; Test 4: extend - child ctx shares services and may override fields
 ; ------------------------------------------------------------
 
 root4: make-context
@@ -143,14 +143,14 @@ d4/dispose
 assert none? sub4/reflect/get 'svc4 true sub4 "unprovide 后子 ctx 读不到"
 
 ; ------------------------------------------------------------
-; Test 5: intercept — 声明拦截链
+; Test 5: intercept - declare an interception chain
 ; ------------------------------------------------------------
 
 root5: make-context
 root5/logger: make-stub-logger
 int5: root5/intercept 'foo make map! [enabled: true]
-; 坑点: map! 字面量 [enabled: true] 存的是 word! 'true 而非 logic! → 用 select 存在性判断
-; intercept-chain 是链式 block [leaf ... root], 查找 = 顺序遍历首个命中
+; Gotcha: the map! literal [enabled: true] stores word! 'true rather than logic! -> check presence via select
+; intercept-chain is a chained block [leaf ... root], so lookup means the first sequential match wins
 chain5: select int5 'intercept-chain
 cfg5: none
 foreach m5 chain5 [if select m5 'foo [cfg5: select m5 'foo]]

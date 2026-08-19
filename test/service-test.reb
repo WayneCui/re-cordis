@@ -1,13 +1,13 @@
 REBOL []
 
 ; ============================================================
-; test/service-test.reb — service.reb 行为测试 (P7)
-; 移植自 ref/tests/service.spec.ts (同步版可移植部分)
-; 运行: rebol3 -s test/service-test.reb
+; test/service-test.reb - behavior tests for service.reb (P7)
+; Ported from ref/tests/service.spec.ts (synchronously portable parts)
+; Run: rebol3 -s test/service-test.reb
 ;
-; 跳过 (同步版限制, ROADMAP §7):
-;   - pending inject (async Service.init 挂起)
-;   - traceable effect (Proxy 上下文穿透)
+; Skipped (synchronous version limits, ROADMAP §7):
+;   - pending inject (async Service.init suspension)
+;   - traceable effect (Proxy context tunneling)
 ; ============================================================
 
 do %../utils.reb
@@ -42,7 +42,7 @@ make-stub-logger: func [] [
 ]
 
 ; ------------------------------------------------------------
-; Test 1: 服务构造自动注册 (super(ctx, name) → reflect.provide)
+; Test 1: service construction auto-registers (super(ctx, name) -> reflect.provide)
 ; ------------------------------------------------------------
 
 root1: make-context
@@ -53,14 +53,14 @@ foo1: make object! [
     value: 42
 ]
 make-service root1 'foo1 foo1
-; 注意: 服务值就是服务对象本身 (上游 provide(name, self))
+; Note: the service value is the service object itself (upstream provide(name, self))
 assert same? foo1 root1/reflect/get 'foo1 true root1 "服务构造后自动注册 (reflect.get)"
 assert equal? 'foo1 foo1/name "服务 name 注入"
 assert equal? 42 select foo1 'value "服务字段保留"
 assert equal? root1 foo1/ctx "服务 ctx 注入"
 
 ; ------------------------------------------------------------
-; Test 2: resolveConfig 基础 (base + head 合并, 无 intercept)
+; Test 2: basic resolveConfig (base + head merge, no intercept)
 ; ------------------------------------------------------------
 
 root2: make-context
@@ -72,12 +72,12 @@ assert equal? 1 select cfg2 'a "resolveConfig base 生效"
 assert equal? 2 select cfg2 'b "resolveConfig head 生效"
 
 ; ------------------------------------------------------------
-; Test 3: resolveConfig 多层 intercept 链 (链式 shadowing 核心)
+; Test 3: resolveConfig across multiple intercept layers (core chained-shadowing behavior)
 ; ------------------------------------------------------------
 
 root3: make-context
 root3/logger: make-stub-logger
-; intercept 不可变 shadowing: 返回新 ctx, 必须接住返回值
+; intercept uses immutable shadowing: it returns a new ctx, so you must capture it
 root3: root3/intercept 'foo3 make map! [a: 1]
 sub3: root3/extend make map! []
 sub3: sub3/intercept 'foo3 make map! [b: 2]
@@ -88,7 +88,7 @@ assert equal? 1 select cfg3 'a "链式 shadowing: 根层 a 保留"
 assert equal? 2 select cfg3 'b "链式 shadowing: 叶层 b 生效"
 
 ; ------------------------------------------------------------
-; Test 4: 叶层覆盖根层同名键 + base 优先级
+; Test 4: leaf layer overrides same key from root + base precedence
 ; ------------------------------------------------------------
 
 root4: make-context
@@ -106,7 +106,7 @@ cfg4c: service-resolve-config foo4 none make map! [level: 'head]
 assert equal? 'head select cfg4c 'level "head 参数优先级最高"
 
 ; ------------------------------------------------------------
-; Test 5: Config.merge 自定义合并器
+; Test 5: custom Config.merge merger
 ; ------------------------------------------------------------
 
 merge-log: copy []
@@ -130,8 +130,8 @@ assert equal? 'merged select cfg5 'custom "Config.merge 自定义合并生效"
 assert equal? 2 first merge-log "merge 收到全部 config (base+head)"
 
 ; ------------------------------------------------------------
-; Test 6: multiple injects — 服务作为插件, 依赖满足后各 init 一次
-; 上游: Foo.inject=['qux'], Bar.inject=['foo','qux'], Qux 无依赖
+; Test 6: multiple injects - services used as plugins, each init runs once after dependencies are satisfied
+; Upstream: Foo.inject=['qux'], Bar.inject=['foo','qux'], Qux has no dependencies
 ; ------------------------------------------------------------
 
 order6: copy []

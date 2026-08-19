@@ -1,33 +1,33 @@
 REBOL []
 
 ; ============================================================
-; fiber.reb — cordis Fiber 状态机的 Rebol3 移植 (P3)
-; 上游: ref/core/fiber.ts (486 行)
+; fiber.reb - Rebol3 port of the cordis Fiber state machine (P3)
+; Upstream: ref/core/fiber.ts (486 lines)
 ;
-; 核心反共识机制 (ROADMAP §4.3, 必保):
-;   1. fiber 状态机: PENDING→LOADING→ACTIVE / →UNLOADING→(reload|PENDING)
-;   2. epoch 反应式: inject 依赖 impl 的 uid 拼接串; provide/dispose 通知
-;      → checkImpl → refresh → epoch 变化 → reload/unload
-;   3. effect() 作用域清理: 卸载时逆序执行 disposer (LIFO)
+; Core non-obvious mechanics (ROADMAP §4.3, must preserve):
+;   1. fiber state machine: PENDING->LOADING->ACTIVE / ->UNLOADING->(reload|PENDING)
+;   2. reactive epoch: inject depends on the concatenated uid string of impls; provide/dispose triggers notification
+;      -> checkImpl -> refresh -> epoch changes -> reload/unload
+;   3. effect() scoped cleanup: run disposers in reverse order on unload (LIFO)
 ;
-; 同步版简化 (ROADMAP §7 限制):
-;   - 无 Promise: _reload/_unload 全同步, inertia 为 logic! 标志
-;   - 无 generator: effect 返回 函数/disposer 对象/block-of-disposers/none
-;   - error 传播: 返回 error! 对象或字符串 (无异常栈)
-;   - resolveConfig: 不支持 schema 验证 (P7 service 补)
+; Synchronous simplifications (ROADMAP §7 limits):
+;   - No Promise: _reload/_unload are fully synchronous, inertia is a logic! flag
+;   - No generator: effect returns function/disposer objects, block-of-disposers, or none
+;   - Error propagation: returns an error! object or string (no exception stack)
+;   - resolveConfig: schema validation is not supported here (added later in P7 service)
 ;
-; 关键 Rebol 约束:
-;   - 回调/disposer 一律 wrapper 对象 (function! 存容器 auto-eval)
-;   - 插件 callback = 对象 + apply 方法 (spike 约定)
-;   - 对象方法只引用自身字段 (自包含), 不闭包创建帧
-;   - 相等性判断一律 equal?/same?
+; Key Rebol constraints:
+;   - Callbacks/disposers are always wrapper objects (function! auto-evaluates in containers)
+;   - Plugin callback = object + apply method (spike convention)
+;   - Object methods may only reference their own fields (self-contained), no frame closures
+;   - Equality checks always use equal?/same?
 ; ============================================================
 
 do %./utils.reb
 do %./events.reb
 
 ; ------------------------------------------------------------
-; 常量
+; Constants
 ; ------------------------------------------------------------
 
 inactive-epoch: "__INACTIVE__"
@@ -41,31 +41,31 @@ fiber-state: context [
     UNLOADING: 5
 ]
 
-; 所有 plugin fiber 注册表 (P4 reflect 正式化前, notify 用)
+; Registry of all plugin fibers (used by notify before P4 reflect is formalized)
 all-fibers: copy []
 
 ; ------------------------------------------------------------
-; fiber 类型
+; fiber type
 ; ------------------------------------------------------------
 
 fiber-type: make object! [
     uid: none
-    parent: none            ; Context (父 context)
-    ctx: none               ; 自己的 context (extend 或 parent)
+    parent: none            ; Context (parent context)
+    ctx: none               ; its own context (extend or parent)
     config: none
     state: fiber-state/PENDING
-    epoch: none             ; string! 或 inactive-epoch
+    epoch: none             ; string! or inactive-epoch
     inject: make map! []    ; name(word!) → config
-    runtime: none           ; [name callback fibers Config] 或 none (root)
-    store: none             ; name → impl 快照 (ACTIVE 时非 none)
+    runtime: none           ; [name callback fibers Config] or none (root)
+    store: none             ; name -> impl snapshot (non-none when ACTIVE)
     disposables: none       ; DisposableList
     hooks: make map! []     ; _hooks: word → DisposableList (internal-update)
     error: none
-    inertia: none           ; 同步版: logic! true = 加载/卸载中
-    dispose: none           ; 卸载入口 (wrapper 对象, root = restart)
+    inertia: none           ; synchronous version: logic! true = loading/unloading
+    dispose: none           ; unload entry point (wrapper object, root = restart)
 
-    ; ---- 方法壳 (内部调独立函数, 自包含) ----
-    ; 注意: 函数参数用 :word 传 (Oldes: word 求值函数值在参数位置 auto-call)
+    ; ---- Method shell (delegates to standalone functions, self-contained) ----
+    ; Note: function arguments must be passed as :word (Oldes auto-calls function values in argument position)
     assert-active: func [] [fiber-assert-active self]
     effect: func [execute [function!] label [string!]] [fiber-effect self :execute label]
     restart: func [] [fiber-restart self]
@@ -76,7 +76,7 @@ fiber-type: make object! [
 ]
 
 ; ------------------------------------------------------------
-; 辅助
+; Helpers
 ; ------------------------------------------------------------
 
 map-remove-key: func [m [map!] key /local nm k v] [
@@ -100,18 +100,18 @@ block-remove-same: func [b [block!] v /local i] [
 ]
 
 ; ------------------------------------------------------------
-; resolveConfig — 简化版 (P7 service 补 schema 验证)
+; resolveConfig - simplified version (schema validation is added later in P7 service)
 ; ------------------------------------------------------------
 
 resolve-config: func [runtime [object! none!] config] [
     unless runtime [return config]
     unless runtime/Config [return config]
-    ; Config = word! 函数名 (validator), 调用返回验证后的 config
+    ; Config = word! function name (validator), invoked to return validated config
     do reduce [runtime/Config config]
 ]
 
 ; ------------------------------------------------------------
-; 状态查询与更新
+; State query and updates
 ; ------------------------------------------------------------
 
 fiber-get-state: func [fb [object!]] [
@@ -130,10 +130,10 @@ fiber-get-state: func [fb [object!]] [
     ]
 ]
 
-; ACTIVE ↔ 非 ACTIVE 边界变化 → 通知 reflect (impl 重新评估)
-; ACTIVE ↔ 非 ACTIVE 边界变化 → 通知 reflect (impl 重新评估)
-; 注意: 必须用 same? (身份比较) — equal? 对对象深度递归比较,
-; ctx↔fiber 循环引用会导致无限递归段错误
+; ACTIVE <-> non-ACTIVE boundary changes -> notify reflect (re-evaluate impls)
+; ACTIVE <-> non-ACTIVE boundary changes -> notify reflect (re-evaluate impls)
+; Note: must use same? (identity comparison) - equal? recursively compares objects deeply,
+; and the ctx<->fiber cyclic reference would cause infinite-recursion segfaults
 fiber-notify-active: func [fb [object!] /local impl name] [
     foreach [name impl] fb/ctx/reflect/store [
         if same? impl/fiber fb [
@@ -142,13 +142,13 @@ fiber-notify-active: func [fb [object!] /local impl name] [
     ]
 ]
 
-; 更新 state, 变化时 emit internal-status + ACTIVE 边界 notify
+; Update state; when it changes, emit internal-status + notify ACTIVE boundary transitions
 fiber-update-state: func [fb [object!] new-state [integer! none!] /local old] [
     old: fb/state
     either new-state [fb/state: new-state][fb/state: fiber-get-state fb]
     if equal? old fb/state [exit]
     fb/ctx/events/emit 'internal-status reduce [fb old] fb
-    ; 仅通知 ACTIVE ↔ 非 ACTIVE 变化
+    ; Only notify ACTIVE <-> non-ACTIVE transitions
     either equal? old fiber-state/ACTIVE [
         if not equal? fb/state fiber-state/ACTIVE [fiber-notify-active fb]
     ][
@@ -161,7 +161,7 @@ fiber-update-state: func [fb [object!] new-state [integer! none!] /local old] [
 ; ------------------------------------------------------------
 
 fiber-check-impl: func [fb [object!] name [word!] /local impl r] [
-    ; unload 后 store 为 none, 重新评估前重建
+    ; After unload store becomes none, rebuild it before re-evaluation
     unless fb/store [fb/store: make map! []]
     impl: fb/ctx/reflect/get-impl name true fb/ctx
     either impl [
@@ -186,8 +186,8 @@ fiber-check-impl: func [fb [object!] name [word!] /local impl r] [
 ]
 
 fiber-refresh: func [fb [object!] /local epoch-str name impl] [
-    ; unload 后 store 为 none; 上游 checkImpl 维护私有 _store,
-    ; Rebol 合并 store/_store → refresh 前重建
+    ; After unload store becomes none; upstream checkImpl maintains a private _store,
+    ; Rebol merges store/_store, so rebuild it before refresh
     unless fb/store [fb/store: make map! []]
     foreach name keys-of fb/inject [fiber-check-impl fb name]
     epoch-str: ""
@@ -203,7 +203,7 @@ fiber-refresh: func [fb [object!] /local epoch-str name impl] [
     fiber-set-epoch fb epoch-str
 ]
 
-; 依赖 epoch 变化 → 重载/卸载 (同步版, inertia 标志防重入)
+; Dependency epoch changes -> reload/unload (synchronous version, inertia flag prevents re-entry)
 fiber-set-epoch: func [fb [object!] epoch-str [string!] /local old] [
     old: fb/epoch
     if equal? epoch-str old [exit]
@@ -218,13 +218,13 @@ fiber-set-epoch: func [fb [object!] epoch-str [string!] /local old] [
             fiber-update-state fb fiber-state/LOADING
             fiber-reload fb
         ][
-            ; 非→非: 先卸载 (内部重入检查会接着 reload)
+            ; non->non: unload first (internal re-entry checks will continue into reload)
             fiber-update-state fb fiber-state/UNLOADING
             fiber-unload fb
         ]
     ]
     fb/inertia: none
-    ; 执行期间 epoch 可能被副作用改变 → 重入检查
+    ; The epoch may change due to side effects during execution -> re-entry check
     unless equal? fb/epoch epoch-str [
         fiber-set-epoch fb fb/epoch
     ]
@@ -236,7 +236,7 @@ fiber-set-epoch: func [fb [object!] epoch-str [string!] /local old] [
 
 fiber-reload: func [fb [object!] /local old-epoch result d] [
     old-epoch: fb/epoch
-    ; unload 后 store 为 none, 快照前重建
+    ; After unload store becomes none, rebuild it before snapshotting
     either fb/store [fb/store: copy fb/store][fb/store: make map! []]
     result: try [fb/runtime/callback/apply fb/ctx fb/config]
     either error? result [
@@ -244,7 +244,7 @@ fiber-reload: func [fb [object!] /local old-epoch result d] [
         fb/error: result
         fb/epoch: inactive-epoch
         fiber-update-state fb fiber-state/FAILED
-        ; 对齐上游: reload 出错 → unload 清理 disposables
+        ; Match upstream: if reload fails -> unload to clean up disposables
         fiber-unload fb
     ][
         either object? result [
@@ -257,7 +257,7 @@ fiber-reload: func [fb [object!] /local old-epoch result d] [
         either equal? fb/epoch old-epoch [
             fiber-update-state fb fiber-state/ACTIVE
         ][
-            ; 执行期间 epoch 变了 → 继续卸载
+            ; The epoch changed during execution -> continue unloading
             fiber-unload fb
         ]
     ]
@@ -266,7 +266,7 @@ fiber-reload: func [fb [object!] /local old-epoch result d] [
 fiber-unload: func [fb [object!] /local ds d r] [
     ds: fb/disposables/clear
     foreach d ds [
-        ; 块尾加 none: dispose 无返回值时 try 结果仍是 none 而非 unset
+        ; Append none at the end so try still yields none rather than unset when dispose has no return value
         r: try [d/dispose  none]
         if error? r [fb/ctx/logger/error r]
     ]
@@ -280,7 +280,7 @@ fiber-unload: func [fb [object!] /local ds d r] [
             either equal? fb/epoch inactive-epoch [
                 fiber-update-state fb fiber-state/PENDING
             ][
-                ; epoch 非 INACTIVE → 重新加载
+                ; epoch is not INACTIVE -> reload
                 fiber-update-state fb fiber-state/LOADING
                 fiber-reload fb
             ]
@@ -289,12 +289,12 @@ fiber-unload: func [fb [object!] /local ds d r] [
 ]
 
 ; ------------------------------------------------------------
-; effect — 作用域清理核心
-; execute: function! 立即执行, 返回:
-;   - disposer 对象 (object!) → 单个收集
-;   - 块 (block of disposer 对象) → 逐个收集 (替代 generator)
-;   - none → 无
-; 返回 wrapper 对象 (幂等 dispose, 带 meta)
+; effect - core of scoped cleanup
+; execute: function! runs immediately and returns:
+;   - disposer object (object!) -> collect one
+;   - block (block of disposer objects) -> collect one by one (replacing generator)
+;   - none -> nothing
+; Returns a wrapper object (idempotent dispose, with meta)
 ; ------------------------------------------------------------
 
 fiber-effect: func [fb [object!] execute [function!] label [string!] /local local-list children-list result d wrapper] [
@@ -303,11 +303,11 @@ fiber-effect: func [fb [object!] execute [function!] label [string!] /local loca
     ]
     local-list: copy []
     children-list: copy []
-    ; execute 协议: 必须返回 对象/disposer/块/none (显式值)。
-    ; 返回 unset = 协议违规 → "needs a value" 报错 (fail loudly)
+    ; execute protocol: must return object/disposer/block/none (an explicit value).
+    ; Returning unset violates the protocol -> "needs a value" error (fail loudly)
     result: try [execute]
     either error? result [
-        ; 已收集的逆序清理, 然后传播错误 (上游: dispose() + throw)
+        ; Clean up already-collected items in reverse order, then propagate the error (upstream: dispose() + throw)
         foreach d reverse local-list [d/dispose]
         return result
     ][
@@ -332,7 +332,7 @@ fiber-effect: func [fb [object!] execute [function!] label [string!] /local loca
     wrapper: make object! [
         done: false
         items: local-list
-        ; 坑点: make object! [label: label] RHS 被自身字段遮蔽 → 创建后赋值
+        ; Gotcha: in make object! [label: label], the RHS is shadowed by the new field -> assign after creation
         meta: make object! [label: none  children: copy []]
         dispose: func [] [
             if done [exit]
@@ -357,7 +357,7 @@ fiber-get-effects: func [fb [object!] /local result d m] [
 ]
 
 ; ------------------------------------------------------------
-; 断言 / 名称
+; Assertions / names
 ; ------------------------------------------------------------
 
 fiber-assert-active: func [fb [object!]] [
@@ -384,7 +384,7 @@ fiber-name: func [fb [object!] /local f] [
 ; ------------------------------------------------------------
 
 fiber-await: func [fb [object!]] [
-    ; 同步版: 无真实等待; 错误返回错误对象 (上游 throw)
+    ; Synchronous version: no real waiting; on error return the error object (upstream throws)
     if fb/error [return fb/error]
     fb
 ]
@@ -411,7 +411,7 @@ fiber-update: func [fb [object!] config no-save [logic!] /local final-w] [
 ]
 
 ; ------------------------------------------------------------
-; 构造函数
+; Constructors
 ; ------------------------------------------------------------
 
 make-fiber-root: func [root-ctx [object!] /local fb] [
@@ -432,11 +432,11 @@ make-fiber-root: func [root-ctx [object!] /local fb] [
     fb
 ]
 
-; 构造 plugin fiber (registry.plugin 的核心, P5 正式化)
-; runtime: [name: string! callback: 对象+apply fibers: DisposableList Config: none]
+; Construct a plugin fiber (core of registry.plugin, formalized in P5)
+; runtime: [name: string! callback: object+apply fibers: DisposableList Config: none]
 make-plugin-fiber: func [parent-ctx [object!] config inject-map [map!] runtime [object!] /local fb child-ctx remove-fn ex dispose-fn] [
     fb: make fiber-type []
-    ; counter 先增后取 (上游 getter: return ++this._counter)
+    ; Increment counter first, then read it (upstream getter: return ++this._counter)
     parent-ctx/registry/counter: parent-ctx/registry/counter + 1
     fb/uid: parent-ctx/registry/counter
     fb/parent: parent-ctx
@@ -449,26 +449,26 @@ make-plugin-fiber: func [parent-ctx [object!] config inject-map [map!] runtime [
     fb/disposables: make-disposable-list
     fb/error: none
     fb/inertia: none
-    ; ctx = parent.extend({ fiber: this }) — 注意 make map! 不求值, 必须 compose
+    ; ctx = parent.extend({ fiber: this }) - note that make map! does not evaluate, so compose is required
     child-ctx: parent-ctx/extend make map! compose [fiber: (fb)]
     fb/ctx: child-ctx
 
     append all-fibers fb
 
-    ; internal/plugin 事件
+    ; internal/plugin event
     fb/ctx/events/emit 'internal-plugin reduce [fb] fb
 
-    ; 初始 inject 检查
+    ; Initial inject check
     foreach name keys-of fb/inject [fiber-check-impl fb name]
 
-    ; dispose = parent.fiber.effect(注册到父 fiber)
-    ; 函数参数必须 :word 传 (Oldes auto-call)
+    ; dispose = parent.fiber.effect(register on parent fiber)
+    ; Function arguments must be passed as :word (Oldes auto-call)
     ex: func [] [
-        ; 插入 runtime.fibers (DisposableList push → remove disposer)
+        ; Insert into runtime.fibers (DisposableList push -> remove disposer)
         remove-fn: runtime/fibers/push fb
         fb/config: resolve-config runtime config
         fiber-refresh fb
-        ; 返回卸载 disposer (自包含)
+        ; Return the unload disposer (self-contained)
         dispose-fn: make object! [
             target-fb: fb
             remover: remove-fn
@@ -476,7 +476,7 @@ make-plugin-fiber: func [parent-ctx [object!] config inject-map [map!] runtime [
                 if none? target-fb/uid [exit]
                 target-fb/uid: none
                 target-fb/ctx/events/emit 'internal-plugin reduce [target-fb] target-fb
-                ; registry 清理 (P5 正式化)
+                ; Registry cleanup (formalized in P5)
                 if target-fb/ctx/registry/has target-fb/runtime/callback [
                     remover/dispose
                     if empty? target-fb/runtime/fibers/values [
@@ -491,6 +491,6 @@ make-plugin-fiber: func [parent-ctx [object!] config inject-map [map!] runtime [
     ]
     fb/dispose: fiber-effect parent-ctx/fiber :ex "ctx.plugin()"
 
-    ; ex 内已做 fiber-refresh (fiber-effect 立即执行), 此处不再重复
+    ; ex already ran fiber-refresh (fiber-effect executes immediately), so do not repeat it here
     fb
 ]

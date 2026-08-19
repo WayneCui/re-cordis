@@ -7,21 +7,21 @@ REBOL [
 ]
 
 ; ============================================================
-; Cordis core 最小可运行移植 spike
-; 目标: 证明 4 个核心反共识机制在 Rebol 中可落地
-;   1. fiber 状态机 + epoch 反应式 (依赖可用->启动, 消失->卸载, 回来->重启)
-;   2. effect() 作用域清理 (卸载时逆序执行 disposer)
-;   3. 事件 5 模式分发 (emit/bail/waterfall, 负载 block 化)
-;   4. provide/notify 服务注册与通知
-; 参考: cordiverse/cordis packages/core (fiber.ts/reflect.ts/events.ts/registry.ts)
+; Minimal runnable port spike of Cordis core
+; Goal: prove that four core non-obvious mechanics can be implemented in Rebol
+;   1. fiber state machine + reactive epoch (dependency available -> start, missing -> unload, back again -> restart)
+;   2. effect() scoped cleanup (run disposers in reverse order on unload)
+;   3. five event dispatch modes (emit/bail/waterfall, payload packed into a block)
+;   4. provide/notify service registration and notification
+; Reference: cordiverse/cordis packages/core (fiber.ts/reflect.ts/events.ts/registry.ts)
 ;
-; 关键 Rebol 约束 (Oldes):
-;   - 不存 function! 于 map/block (自动求值) -> 回调一律 object! [call: ...]
-;   - 不用 #() 空 map 字面量 (malconstruct) -> make map! []
-;   - make object! [x: x] 的 RHS 被新对象字段遮蔽 -> 闭包捕获或创建后赋值
+; Key Rebol constraints (Oldes):
+;   - Do not store function! in map/block (auto-evaluates) -> callbacks are always object! [call: ...]
+;   - Do not use #() empty map literals (malconstruct) -> use make map! []
+;   - In make object! [x: x], the RHS is shadowed by the new field -> capture via closure or assign after creation
 ; ============================================================
 
-; ---------- 常量 ----------
+; ---------- Constants ----------
 inactive-epoch: "__INACTIVE__"
 
 fiber-state: context [
@@ -33,12 +33,12 @@ fiber-state: context [
     UNLOADING: 5
 ]
 
-; ---------- 全局 ----------
-all-fibers: copy []          ; 所有 plugin fiber (notify 用)
+; ---------- Globals ----------
+all-fibers: copy []          ; all plugin fibers (used by notify)
 pass-count: 0
 fail-count: 0
 
-; ---------- 工具 ----------
+; ---------- Utilities ----------
 check: func [label [string!] cond [logic!]] [
     either cond [
         pass-count: pass-count + 1
@@ -75,13 +75,13 @@ map-get-block: func [m [map!] key [word!] /local v] [
 ]
 
 ; ============================================================
-; 1. events: 5 模式分发 (emit/bail/waterfall), 负载 = 单个 block
-;    listener 统一为 object! [call: func [args [block!]] [...]]
+; 1. events: five dispatch modes (emit/bail/waterfall), payload = single block
+;    listeners are uniformly object! [call: func [args [block!]] [...]]
 ; ============================================================
 events-on: func [ctx [object!] name [word!] listener [object!]] [
-    ; 注册为 fiber effect -> 随 fiber 卸载自动移除
-    ; 注意: 返回的 disposer 自包含 (ev-ctx/ev-name/ev-listener 字段),
-    ; 因为 Oldes 中方法对创建函数局部的闭包在帧销毁后失效
+    ; Register as a fiber effect -> automatically removed when the fiber unloads
+    ; Note: the returned disposer is self-contained (ev-ctx/ev-name/ev-listener fields),
+    ; because in Oldes closures over function locals stop working after the frame is destroyed
     fiber-effect ctx/fiber make object! [
         run: func [] [
             hb: select ctx/events/hooks name
@@ -117,7 +117,7 @@ events-bail: func [ctx [object!] name [word!] args [block!] /local hb r] [
     none
 ]
 
-; waterfall: 每个 listener 收到 (args, next), next/call args none 继续链
+; waterfall: each listener receives (args, next), and next/call args none continues the chain
 make-waterfall-step: func [hook [object!] next-obj [object!]] [
     make object! [
         step-hook: hook
@@ -162,7 +162,7 @@ ctx-emit: func [ctx [object!] name [word!] args [block!]] [events-emit ctx name 
 ctx-bail: func [ctx [object!] name [word!] args [block!]] [events-bail ctx name args]
 
 ; ============================================================
-; 2. fiber: 状态机 + effect + epoch
+; 2. fiber: state machine + effect + epoch
 ; ============================================================
 fiber-type: make object! [
     uid: none
@@ -257,7 +257,7 @@ set-epoch: func [fb [object!] epoch-str [string!] /local old] [
         reload-fiber fb
     ]
     fb/inertia: none
-    ; 执行期间 epoch 可能被副作用改变 -> 重入检查
+    ; The epoch may change due to side effects during execution -> re-entry check
     unless to-logic fb/epoch = epoch-str [
         set-epoch fb fb/epoch
     ]
@@ -349,7 +349,7 @@ reflect-service: make object! [
 notify-impls: func [names [block!] /local fb name] [
     foreach fb all-fibers [
         foreach name names [
-            ; 查键存在性 (注入值可能是 none)
+            ; Check key existence (the injected value itself may be none)
             if find keys-of fb/inject name [
                 check-impl fb name
                 refresh fb
@@ -399,7 +399,7 @@ make-plugin-fiber: func [parent [object!] plugin [object!] config runtime [objec
     append runtime/fibers fb
     append all-fibers fb
 
-    ; dispose wrapper 注册在 parent fiber 上 (JS: this.dispose = parent.fiber.effect(...))
+    ; Register the dispose wrapper on the parent fiber (JS: this.dispose = parent.fiber.effect(...))
     wrapper: fiber-effect parent/fiber make object! [
         run: func [] [
             make object! [
@@ -415,7 +415,7 @@ make-plugin-fiber: func [parent [object!] plugin [object!] config runtime [objec
         ]
     ] "ctx.plugin()"
 
-    ; 初始 refresh: 无依赖 -> 立即加载; 有依赖未就绪 -> 保持 PENDING
+    ; Initial refresh: no dependencies -> load immediately; unresolved dependencies -> stay PENDING
     refresh fb
     wrapper
 ]
@@ -452,7 +452,7 @@ make-root-context: func [/local root root-fiber] [
 ]
 
 ; ============================================================
-; 测试
+; Tests
 ; ============================================================
 test-1: func [/local order root foo-plugin fb] [
     print "--- Test 1: pending inject -> provide -> unprovide -> re-provide"
@@ -507,8 +507,8 @@ test-2: func [/local order root inner-plugin outer-plugin fb] [
     check "inner event handled" to-logic 3 = length? order
     check "inner event third" to-logic 'inner-event = third order
     fb/dispose
-    ; 上游语义 (LIFO): outer fiber disposables = [inner-wrapper, outer-plugin-disposer]
-    ; 逆序 -> outer-plugin-disposer 先跑, 再卸载 inner (inner-stop)
+    ; Upstream semantics (LIFO): outer fiber disposables = [inner-wrapper, outer-plugin-disposer]
+    ; Reversed order -> outer-plugin-disposer runs first, then inner unloads (inner-stop)
     check "all cleaned" to-logic 5 = length? order
     check "outer disposer first (LIFO)" to-logic 'outer-stop = pick order 4
     check "inner unloads after outer disposer" to-logic 'inner-stop = pick order 5

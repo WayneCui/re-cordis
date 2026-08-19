@@ -1,9 +1,9 @@
 REBOL []
 
 ; ============================================================
-; test/events-test.reb — events.reb 行为测试 (P2)
-; 移植自 ref/tests/events.spec.ts (vitest 用例)
-; 运行: rebol3 -s test/events-test.reb
+; test/events-test.reb - behavior tests for events.reb (P2)
+; Ported from ref/tests/events.spec.ts (vitest cases)
+; Run: rebol3 -s test/events-test.reb
 ; ============================================================
 
 do %../utils.reb
@@ -23,7 +23,7 @@ assert: func [cond [logic!] label [string!]] [
 ]
 
 ; ------------------------------------------------------------
-; stub fiber / ctx (P3 之前的最小替身)
+; stub fiber / ctx (minimal stand-in before P3)
 ; ------------------------------------------------------------
 
 make-stub-fiber: func [] [
@@ -68,7 +68,7 @@ make-stub-ctx: func [/local ctx] [
     ctx
 ]
 
-; Filter/Session: filter 字段 = word! 函数名
+; Filter/Session: the filter field = word! function name
 filter-true:  func [ctx] [true]
 filter-false: func [ctx] [false]
 
@@ -80,7 +80,7 @@ make-filter: func [flag /local f] [
 make-session: func [flag] [make-filter flag]
 
 ; ------------------------------------------------------------
-; Test 1: ctx.on() — emit 调用 / dispose 解除
+; Test 1: ctx.on() - called by emit / removed by dispose
 ; ------------------------------------------------------------
 
 c1: 0
@@ -113,7 +113,7 @@ ev/emit 'test-event [] none
 assert equal? 1 c3 "once: dispose 后不调用"
 
 ; ------------------------------------------------------------
-; Test 3: emit/parallel — Session thisArg 过滤
+; Test 3: emit/parallel - Session thisArg filtering
 ; ------------------------------------------------------------
 
 c2: 0
@@ -128,12 +128,12 @@ assert equal? 1 c2 "emit: Session(false) 排除过滤 ctx 的 hook"
 ev/emit 'test-filter reduce [make-session true] none
 assert equal? 2 c2 "emit: Session(true) 包含过滤 ctx 的 hook"
 
-; parallel 同 emit (同步, 无并发)
+; parallel matches emit here (synchronous, no concurrency)
 ev/parallel 'test-filter [] none
 assert equal? 3 c2 "parallel: 无错误时正常调用"
 
 ; ------------------------------------------------------------
-; Test 4: parallel — 错误聚合 (同步版返回错误块)
+; Test 4: parallel - error aggregation (synchronous version returns an error block)
 ; ------------------------------------------------------------
 
 err-a: func [args [block!]] [print undefined-word-a]
@@ -147,7 +147,7 @@ assert block? pe2 "parallel: 有错误返回错误块"
 assert equal? 2 length? pe2 "parallel: 聚合 2 个错误"
 
 ; ------------------------------------------------------------
-; Test 5: serial — 首个 is-bailed 短路
+; Test 5: serial - short-circuit on the first is-bailed result
 ; ------------------------------------------------------------
 
 serial-c-count: 0
@@ -162,7 +162,7 @@ assert equal? 42 r "serial: 返回首个非空结果"
 assert equal? 0 serial-c-count "serial: 短路后不调用后续"
 
 ; ------------------------------------------------------------
-; Test 6: bail — 同 serial
+; Test 6: bail - same behavior as serial
 ; ------------------------------------------------------------
 
 bail-a: func [args [block!]] [false]
@@ -173,7 +173,7 @@ rb: ev/bail 'test-bail [] none
 assert equal? true rb "bail: 返回首个非空结果 (false 跳过)"
 
 ; ------------------------------------------------------------
-; Test 7: waterfall — 链式 next
+; Test 7: waterfall - chained next
 ; ------------------------------------------------------------
 
 wfall-inner: func [args [block!]] [2]
@@ -185,14 +185,14 @@ ev/on 'test-waterfall 'wf2 make map! [] none
 rw: ev/waterfall 'test-waterfall [1] 'wfall-inner none
 assert equal? 4 rw "waterfall: 链式累加 = 4"
 
-; 中途短路: wf3 不调 next
+; Midway short-circuit: wf3 does not call next
 wf3: func [args [block!]] [args/1]
 ev/on 'test-waterfall 'wf3 make map! [] none
 rw2: ev/waterfall 'test-waterfall [1] 'wfall-inner none
 assert equal? 3 rw2 "waterfall: 短路 = 3"
 
 ; ------------------------------------------------------------
-; Test 8: internal/listener — internal-update 存入 fiber hooks
+; Test 8: internal/listener - internal-update is stored in fiber hooks
 ; ------------------------------------------------------------
 
 iu-cb: func [args [block!]] [none]

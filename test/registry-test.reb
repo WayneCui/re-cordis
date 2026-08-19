@@ -1,9 +1,9 @@
 REBOL []
 
 ; ============================================================
-; test/registry-test.reb — registry.reb 行为测试 (P5)
-; 移植自 ref/tests/plugin.spec.ts (同步版)
-; 运行: rebol3 -s test/registry-test.reb
+; test/registry-test.reb - behavior tests for registry.reb (P5)
+; Ported from ref/tests/plugin.spec.ts (synchronous version)
+; Run: rebol3 -s test/registry-test.reb
 ; ============================================================
 
 do %../utils.reb
@@ -26,7 +26,7 @@ assert: func [cond [logic!] label [string!]] [
 ]
 
 ; ------------------------------------------------------------
-; 环境
+; Test environment
 ; ------------------------------------------------------------
 
 make-stub-logger: func [] [
@@ -77,7 +77,7 @@ make-root: func [/local root rf] [
 ]
 
 ; ------------------------------------------------------------
-; Test 1: 对象插件 apply + config 透传
+; Test 1: object plugin apply + config passthrough
 ; ------------------------------------------------------------
 
 t1-calls: 0
@@ -99,14 +99,14 @@ assert equal? fiber-state/ACTIVE fb1/state "插件 ACTIVE"
 assert equal? 1 root1/registry/size "registry size 1"
 assert root1/registry/has t1-plugin "registry.has 命中"
 
-; 同插件再注册 → 共享 runtime
+; Register the same plugin again -> reuse the runtime
 root1/registry/plugin t1-plugin make map! [msg: "world"] none
 assert equal? 2 t1-calls "同插件再注册 apply 第 2 次"
 assert equal? "world" t1-config "第二次 config"
 assert equal? 1 root1/registry/size "同插件共享 runtime, size 仍 1"
 
 ; ------------------------------------------------------------
-; Test 2: invalid plugin 报错
+; Test 2: invalid plugin error
 ; ------------------------------------------------------------
 
 root2: make-root
@@ -132,7 +132,7 @@ root3/registry/for-each func [k v] [cnt3: cnt3 + 1]
 assert equal? 2 cnt3 "forEach 遍历 2 次"
 
 ; ------------------------------------------------------------
-; Test 4: delete 插件 → fiber 卸载
+; Test 4: delete plugin -> fiber unload
 ; ------------------------------------------------------------
 
 order4: copy []
@@ -154,12 +154,12 @@ assert equal? 'p4-stop second order4 "p4 stop 标记"
 assert equal? fiber-state/DISPOSED fb4/state "fiber DISPOSED"
 
 ; ------------------------------------------------------------
-; Test 5: inject 便捷方法
+; Test 5: inject convenience helper
 ; ------------------------------------------------------------
 
 t5-args: none
 t5-fn: func [ctx [object!] config] [
-    ; 显式版: 服务从 reflect store 取 (无 Proxy 字段)
+    ; Explicit version: read the service from reflect store (no Proxy field)
     t5-args: reduce [ctx/reflect/get 'foo true ctx  config]
     none
 ]
@@ -173,7 +173,7 @@ foreach e5 root5/logger/error-log [print ["  [dbg-t5] err id: " e5/id " near: " 
 assert equal? reduce ["foo-val" none] t5-args "inject 注入 foo 服务并调用"
 
 ; ------------------------------------------------------------
-; Test 6: inactive context — dispose 后操作报错
+; Test 6: inactive context - operations after dispose should error
 ; ------------------------------------------------------------
 
 t6-calls: 0
@@ -186,13 +186,13 @@ p6: make object! [
     inject: []
     apply: func [ctx [object!] config] [
         append order6 'p6-start
-        ; dispose 方法不能闭包 apply 帧的 ctx → 存字段
+        ; dispose methods cannot close over the apply frame's ctx -> store it in a field
         make object! [
             p6-ctx: ctx
             dispose: func [/local fx6] [
                 append order6 'p6-dispose
                 r6: p6-ctx/registry/plugin inner-cb none p6-ctx
-                ; find 找到返回位置(truthy) → none? false → 应走 'ok
+                ; find returns a position (truthy) -> none? is false -> should yield 'ok
                 append order6 reduce [either none? find r6 "inactive" ['fail]['ok]]
                 fx6: func [] [none]
                 r6b: p6-ctx/fiber/effect :fx6 "x"
@@ -212,7 +212,7 @@ assert equal? 'ok2 pick order6 4 "inactive 后 effect 报错"
 assert equal? 0 t6-calls "inner 插件未启动"
 
 ; ------------------------------------------------------------
-; Test 7: 嵌套插件 — registry size 生命周期
+; Test 7: nested plugins - registry size lifecycle
 ; ------------------------------------------------------------
 
 evt-calls: 0
@@ -250,18 +250,18 @@ assert equal? 3 root7/registry/size "嵌套 3 个 runtime"
 evt-calls: 0
 root7/events/emit 'evt [] none
 assert equal? 4 evt-calls "4 个 listener 触发"
-; 卸载根 → 嵌套全部卸载
+; Unload the root -> everything nested unloads as well
 fb7/dispose/dispose
 assert equal? 0 root7/registry/size "卸载后 registry size 0"
 evt-calls: 0
 root7/events/emit 'evt [] none
 assert equal? 1 evt-calls "只剩 root listener"
-; 重复 dispose 幂等
+; Repeated dispose is idempotent
 fb7/dispose/dispose
 assert equal? 0 root7/registry/size "重复 dispose size 仍 0"
 
 ; ------------------------------------------------------------
-; Test 8: root dispose — 清 root disposables
+; Test 8: root dispose - clear root disposables
 ; ------------------------------------------------------------
 
 d8: 0

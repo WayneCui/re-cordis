@@ -1,23 +1,23 @@
 REBOL []
 
 ; ============================================================
-; utils.reb — cordis core utils 的 Rebol3 移植 (P1)
-; 上游: ref/core/utils.ts (278 行)
+; utils.reb - Rebol3 port of cordis core utils (P1)
+; Upstream: ref/core/utils.ts (278 lines)
 ;
-; 保留:
-;   - DisposableList   (events/registry 使用: push/delete/clear/length/迭代)
-;   - symbols          (service/registry/events/logger 使用, Symbol.for → word!)
-;   - compose-error    (错误助手, 同步简化版: 无 JS stack, 附加 context 标签)
+; Kept:
+;   - DisposableList   (used by events/registry: push/delete/clear/length/iteration)
+;   - symbols          (used by service/registry/events/logger, Symbol.for -> word!)
+;   - compose-error    (error helper, synchronous simplification: no JS stack, attach a context label)
 ;
-; 丢弃 (ROADMAP §4.2, traceable Proxy 机制, 仅 JS this 语义需要):
+; Dropped (ROADMAP §4.2, traceable Proxy mechanism, only needed for JS this semantics):
 ;   createTraceable / withProps / createShadow / createShadowMethod /
 ;   createCallable / joinPrototype / isConstructor / isObject /
 ;   getPropertyDescriptor / buildOuterStack
 ; ============================================================
 
 ; ------------------------------------------------------------
-; symbols — Symbol.for('cordis.xxx') → word! 常量
-; 注意: word! 不能含 '/' (scanner 解析为 path!), 用 '-' 代替
+; symbols - Symbol.for('cordis.xxx') -> word! constants
+; Note: word! cannot contain '/' (the scanner parses it as a path!), so use '-' instead
 ; ------------------------------------------------------------
 
 shadow:         'cordis-shadow
@@ -42,20 +42,20 @@ resolve-config: 'cordis-resolveConfig
 ; ------------------------------------------------------------
 ; DisposableList
 ;
-; TS 语义:
-;   push(value)  → () => map.delete(sn)   卸载函数
-;   delete(value) → bool                  按值删除 (身份比较)
-;   clear()      → values.reverse()       清空并返回逆序 values
+; TS semantics:
+;   push(value)  -> () => map.delete(sn)   unload function
+;   delete(value) -> bool                  delete by value (identity comparison)
+;   clear()      -> values.reverse()       clear and return values in reverse order
 ;   length       → map.size
-;   迭代          → map.values()
+;   iteration    -> map.values()
 ;
-; Rebol 落法 (坑点: function! 存容器 auto-eval; make object! 方法
-; 不能闭包创建帧局部变量 → disposer 必须自包含):
-;   - 实例为 object!, data: map! (sn → value), sn 递增
-;   - push 返回 disposer 对象 [list-ref idx dispose], dispose 调
-;     list-ref/remove idx — 字段传引用, 不依赖闭包
-;   - map! 无 remove-key native → remove/delete 重建 map
-;   - 相等性判断一律 equal? (返回 logic!, 不是 string)
+; Rebol implementation shape (gotcha: function! auto-evaluates in containers; make object! methods
+; cannot close over frame-local variables, so the disposer must be self-contained):
+;   - Instance is an object!, data: map! (sn -> value), sn increments
+;   - push returns a disposer object [list-ref idx dispose], and dispose calls
+;     list-ref/remove idx - pass references through fields, not closures
+;   - map! has no native remove-key -> rebuild the map via remove/delete
+;   - Equality checks always use equal? (returns logic!, not string)
 ; ------------------------------------------------------------
 
 make-disposable-list: func [][
@@ -115,11 +115,11 @@ make-disposable-list: func [][
 ]
 
 ; ------------------------------------------------------------
-; compose-error — 错误助手 (同步简化版)
+; compose-error - error helper (synchronous simplification)
 ;
-; TS 语义: 包裹 callback, 捕获异常, 把调用栈信息附加到错误后重新抛出
-; Rebol 落法: 无 stack; try 捕获, 出错返回错误信息字符串 (fail loudly),
-;   附加 context 标签便于定位 (如 "plugin foo")
+; TS semantics: wrap a callback, catch exceptions, append stack information to the error, then rethrow
+; Rebol implementation: no stack; catch with try and return an error string on failure (fail loudly),
+;   with an attached context label for easier localization (for example "plugin foo")
 ; ------------------------------------------------------------
 
 compose-error: func [

@@ -1,9 +1,9 @@
 REBOL []
 
 ; ============================================================
-; test/fiber-test.reb — fiber.reb 行为测试 (P3)
-; 移植自 ref/tests/fiber.spec.ts + dispose.spec.ts (同步版)
-; 运行: rebol3 -s test/fiber-test.reb
+; test/fiber-test.reb - behavior tests for fiber.reb (P3)
+; Ported from ref/tests/fiber.spec.ts + dispose.spec.ts (synchronous version)
+; Run: rebol3 -s test/fiber-test.reb
 ; ============================================================
 
 do %../utils.reb
@@ -24,7 +24,7 @@ assert: func [cond [logic!] label [string!]] [
 ]
 
 ; ------------------------------------------------------------
-; 环境: stub registry/reflect/logger + ctx 工厂
+; Test environment: stub registry/reflect/logger + ctx factory
 ; ------------------------------------------------------------
 
 notify-impls: func [names [block!] /local fb name] [
@@ -68,7 +68,7 @@ make-stub-logger: func [] [
     ]
 ]
 
-; 子 ctx 工厂: 含 extend 方法 (闭包 root-ref 字段, 支持嵌套 extend)
+; Child ctx factory: includes extend (root-ref field closure, supports nested extend)
 make-child-ctx: func [root-ctx [object! none!] props [map!] /local new] [
     new: make object! [
         fiber: none
@@ -102,15 +102,15 @@ make-ctx: func [/local ctx] [
 
 make-root: func [/local root rf] [
     root: make-ctx
-    ; 构造顺序 (ROADMAP §3): fiber → reflect → registry → events → logger
+    ; Construction order (ROADMAP §3): fiber -> reflect -> registry -> events -> logger
     rf: make-fiber-root root
     root/fiber: rf
     root/registry: make-stub-registry
     root/reflect: make-stub-reflect
     root/logger: make-stub-logger
     root/events: make-events-service root
-    ; 对齐上游 context.ts: 构造完成后替换 root fiber disposables,
-    ; 丢弃 internal handler 的 wrapper (hook 已插入 events, wrapper 不再需要)
+    ; Match upstream context.ts: replace root fiber disposables after construction,
+    ; dropping the internal handler wrapper (the hook is already inserted into events)
     root/fiber/disposables: make-disposable-list
     root
 ]
@@ -123,7 +123,7 @@ make-test-runtime: func [name [string!] plugin [object!] /local rt] [
     rt
 ]
 
-; 服务提供/撤销模拟 (P4 reflect 正式化前的桩)
+; Simulate service provide/unprovide (stub used before P4 reflect is formalized)
 simulate-provide: func [root [object!] name [word!] value /local impl] [
     impl: make object! [name: none value: none fiber: none check: none]
     impl/name: name
@@ -141,7 +141,7 @@ simulate-unprovide: func [root [object!] name [word!]] [
 ]
 
 ; ------------------------------------------------------------
-; Test 1: 依赖反应式 — pending → provide → unprovide → re-provide
+; Test 1: reactive dependencies - pending -> provide -> unprovide -> re-provide
 ; ------------------------------------------------------------
 
 order: copy []
@@ -171,7 +171,7 @@ assert equal? 3 length? order "重新 provide 再启动"
 assert equal? 'start pick order 3 "再启动标记"
 
 ; ------------------------------------------------------------
-; Test 2: plugin error → FAILED, listener 仍有效
+; Test 2: plugin error -> FAILED, listener still works
 ; ------------------------------------------------------------
 
 err-callback: 0
@@ -180,7 +180,7 @@ err-plugin: make object! [
     name: "err-plugin"
     inject: []
     apply: func [ctx [object!] config] [
-        ; 显式传 ctx: listener 注册到插件 fiber (上游 traceable 隐式, Rebol 显式)
+        ; Pass ctx explicitly: register the listener on the plugin fiber (upstream traceable is implicit, Rebol is explicit)
         ctx/events/on 'evt 'err-listener make map! [] ctx
         if not any [select config 'foo] [print undefined-err-xyz]
     ]
@@ -197,7 +197,7 @@ root2/events/emit 'evt [] none
 assert equal? 1 err-callback "ACTIVE 插件 listener 生效 (FAILED 的已清理)"
 
 ; ------------------------------------------------------------
-; Test 3: dispose error — disposer 抛错不崩
+; Test 3: dispose error - disposer throws without crashing
 ; ------------------------------------------------------------
 
 disp-count: 0
@@ -218,7 +218,7 @@ assert equal? 1 disp-count "disposer 调用 1 次"
 assert equal? 1 length? root3/logger/error-log "disposer 错误被记录"
 
 ; ------------------------------------------------------------
-; Test 4: update config → 重启重跑
+; Test 4: update config -> restart and rerun
 ; ------------------------------------------------------------
 
 uc-calls: 0
@@ -242,7 +242,7 @@ assert equal? 2 uc-calls "update: 第二次调用"
 assert equal? "world" second uc-configs "update: config world"
 
 ; ------------------------------------------------------------
-; Test 5: restart → 重跑, ACTIVE
+; Test 5: restart -> rerun, ACTIVE
 ; ------------------------------------------------------------
 
 rc: 0
@@ -260,7 +260,7 @@ assert equal? 2 rc "restart: 重跑"
 assert equal? fiber-state/ACTIVE fb5/state "restart 后 ACTIVE"
 
 ; ------------------------------------------------------------
-; Test 6: update while injected service — consumer 重跑
+; Test 6: update while injected service is present - consumer reruns
 ; ------------------------------------------------------------
 
 applied: copy []
@@ -286,7 +286,7 @@ assert equal? reduce [1 "new"] second applied "consumer update [1 new]"
 assert equal? fiber-state/ACTIVE fb6/state "consumer 仍 ACTIVE"
 
 ; ------------------------------------------------------------
-; Test 7: dispose by plugin — getEffects + 幂等
+; Test 7: dispose by plugin - getEffects + idempotence
 ; ------------------------------------------------------------
 
 d1-count: 0
@@ -328,11 +328,11 @@ w8/dispose
 assert equal? 1 d2-count "重复手动 dispose 幂等"
 
 ; ------------------------------------------------------------
-; Test 9: 块 effect — 嵌套 + 逆序清理 [3 2 1]
+; Test 9: block effect - nesting + reverse cleanup [3 2 1]
 ; ------------------------------------------------------------
 
 seq9: copy []
-; 坑点: disposer 方法不能闭包创建帧局部 (d9 的 n) → 存字段
+; Gotcha: disposer methods cannot close over frame locals (d9's n) -> store it in a field
 d9: func [n /local d] [
     d: make object! [val: n  dispose: func [] [append seq9 val]]
     d
@@ -350,14 +350,14 @@ w9: root9/fiber/effect :fx9 "anonymous"
 assert equal? 0 length? seq9 "清理前无副作用"
 w9/dispose
 assert equal? [3 2 1] seq9 "块 effect 逆序清理 [3 2 1]"
-; 嵌套 meta children
+; Nested meta children
 ges9: root9/fiber/get-effects
 assert equal? 1 length? ges9 "嵌套后 1 个顶层 effect"
 assert equal? 1 length? ges9/1/children "顶层 effect 1 个 child"
 assert equal? "nested" ges9/1/children/1/label "child label = nested"
 
 ; ------------------------------------------------------------
-; Test 10: effect 抛错传播 + 已收集清理
+; Test 10: effect error propagation + cleanup of already collected items
 ; ------------------------------------------------------------
 
 seq10: copy []
@@ -371,7 +371,7 @@ assert error? r10 "effect 抛错传播"
 assert equal? 0 length? seq10 "execute 抛错无部分收集 (副作用在报错后)"
 
 ; ------------------------------------------------------------
-; Test 11: 嵌套插件 LIFO 清理
+; Test 11: nested plugin LIFO cleanup
 ; ------------------------------------------------------------
 
 order11: copy []
@@ -407,7 +407,7 @@ assert equal? 'outer-stop pick order11 4 "父 disposer 先于子卸载 (LIFO)"
 assert equal? 'inner-stop pick order11 5 "子插件后卸载"
 
 ; ------------------------------------------------------------
-; Test 12: root fiber 基本属性
+; Test 12: basic root fiber properties
 ; ------------------------------------------------------------
 
 root12: make-root

@@ -1,19 +1,19 @@
 REBOL []
 
 ; ============================================================
-; registry.reb — cordis RegistryService 的 Rebol3 移植 (P5)
-; 上游: ref/core/registry.ts (214 行)
+; registry.reb - Rebol3 port of cordis RegistryService (P5)
+; Upstream: ref/core/registry.ts (214 lines)
 ;
-; 语义映射:
-;   - _internal Map<Function, Runtime> → runtimes block (runtime 对象列表,
-;     find-runtime 用 same? 匹配 callback)
-;   - plugin(plugin, config) → resolve → runtime 查找/创建 → make-plugin-fiber
-;   - inject(deps, callback) → 包装成插件对象 {inject, apply}
-;   - decorator @Inject → 声明式 inject 字段 (ROADMAP §4.4)
-;   - counter 递增 (make-plugin-fiber 使用)
-;   - delete → 移除 runtime + dispose 所有 fibers
+; Semantic mapping:
+;   - _internal Map<Function, Runtime> -> runtimes block (list of runtime objects,
+;     find-runtime matches callbacks with same?)
+;   - plugin(plugin, config) -> resolve -> find/create runtime -> make-plugin-fiber
+;   - inject(deps, callback) -> wrap into a plugin object {inject, apply}
+;   - decorator @Inject -> declarative inject field (ROADMAP §4.4)
+;   - counter increments (used by make-plugin-fiber)
+;   - delete -> remove the runtime + dispose all fibers
 ;
-; 约束: 回调存 wrapper 对象; 对象比较用 same?; make map! 用 compose
+; Constraints: callbacks are stored as wrapper objects; object comparison uses same?; use compose with make map!
 ; ============================================================
 
 do %./utils.reb
@@ -22,14 +22,14 @@ do %./fiber.reb
 do %./reflect.reb
 
 ; ------------------------------------------------------------
-; Inject.resolve — inject 声明 → map! (name → config/none)
+; Inject.resolve - inject declaration -> map! (name -> config/none)
 ; ------------------------------------------------------------
 
 resolve-inject: func [inject [block! map! none!] /local result name val] [
     result: make map! []
     either block? inject [
         foreach name inject [
-            ; 字面量块元素是 lit-word → to-word
+            ; Literal block elements are lit-word -> convert with to-word
             put result to-word name none
         ]
     ][
@@ -43,14 +43,14 @@ resolve-inject: func [inject [block! map! none!] /local result name val] [
 ]
 
 ; ------------------------------------------------------------
-; RegistryService 工厂
+; RegistryService factory
 ; ------------------------------------------------------------
 
 make-registry-service: func [root-ctx [object!] /local svc] [
     svc: make object! [
         ctx: root-ctx
         counter: 0
-        runtimes: copy []          ; block of runtime 对象
+        runtimes: copy []          ; block of runtime objects
 
         find-runtime: func [callback [object!] /local rt] [
             foreach rt self/runtimes [
@@ -59,7 +59,7 @@ make-registry-service: func [root-ctx [object!] /local svc] [
             none
         ]
 
-        ; ---- 集合 API ----
+        ; ---- Collection API ----
         size: does [length? self/runtimes]
         keys: does [collect [foreach rt self/runtimes [keep rt/callback]]]
         values: does [collect [foreach rt self/runtimes [keep rt]]]
@@ -81,10 +81,10 @@ make-registry-service: func [root-ctx [object!] /local svc] [
             rt
         ]
 
-        ; ---- plugin 注册 ----
-        ; ctx 参数: 显式调用者 ctx (上游 traceable 隐式, Rebol 显式; 缺省 root)
+        ; ---- plugin registration ----
+        ; ctx parameter: explicit caller ctx (upstream traceable is implicit, Rebol is explicit; default is root)
         plugin: func [plugin [object!] config ctx [object! none!] /local callback rt inject-map fb r act-ctx] [
-            ; 注意: select 取方法字段会 auto-call → 用 in 检查存在性
+            ; Note: select auto-calls method fields -> use in to test for existence
             callback: either in plugin 'apply [plugin][none]
             unless callback [
                 return rejoin ["[RegistryError] invalid plugin, expect object with an apply method"]
@@ -106,7 +106,7 @@ make-registry-service: func [root-ctx [object!] /local svc] [
             fb
         ]
 
-        ; ---- inject 便捷方法 (包装成插件对象) ----
+        ; ---- inject convenience helper (wrap into a plugin object) ----
         inject: func [deps [block!] apply-word [word!] ctx [object! none!] /local p] [
             p: make object! [
                 name: none

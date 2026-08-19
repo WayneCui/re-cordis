@@ -1,11 +1,11 @@
 REBOL []
 
 ; ============================================================
-; test/logger-test.reb — logger.reb 行为测试 (P8)
-; 移植自 ref/tests/logger.spec.ts (同步版可移植部分)
-; 运行: rebol3 -s test/logger-test.reb
+; test/logger-test.reb - behavior tests for logger.reb (P8)
+; Ported from ref/tests/logger.spec.ts (synchronously portable parts)
+; Run: rebol3 -s test/logger-test.reb
 ;
-; 跳过 (同步版限制): 服务内调用 name 穿透 (traceable 上下文)
+; Skipped (synchronous version limitation): name tunneling from inside a service (traceable context)
 ; ============================================================
 
 do %../utils.reb
@@ -31,7 +31,7 @@ assert: func [cond [logic!] label [string!]] [
 ]
 
 ; ------------------------------------------------------------
-; Test 1: bounded buffer — 大小限制 + 时间顺序 (上游第一测)
+; Test 1: bounded buffer - size limit + chronological order (first upstream test)
 ; ------------------------------------------------------------
 
 root1: make-context
@@ -52,11 +52,11 @@ root1/logger/info "five"
 assert equal? 0 length? root1/logger/buffer "buffer-size 0 → 空"
 
 ; ------------------------------------------------------------
-; Test 2: exporter 注册/注销 — disposer 隔离
+; Test 2: exporter registration/unregistration - disposer isolation
 ; ------------------------------------------------------------
 
 root2: make-context
-root2/logger/exporters: make map! []   ; 清掉默认 exporter
+root2/logger/exporters: make map! []   ; clear the default exporter
 cap2: copy []
 exp2a: make object! [
     levels: make map! []
@@ -70,7 +70,7 @@ d2a/dispose
 root2/logger/info "world"
 assert equal? 1 length? cap2 "注销后不再收到"
 
-; 第二个 exporter 不受第一个注销影响
+; The second exporter is unaffected by the first exporter's disposal
 cap2b: copy []
 exp2b: make object! [
     levels: make map! []
@@ -82,13 +82,13 @@ assert equal? 1 length? cap2b "独立 exporter 正常接收"
 d2b/dispose
 
 ; ------------------------------------------------------------
-; Test 3: name 解析 — 默认 fiber name (上游: 'root')
+; Test 3: name resolution - default fiber name (upstream: 'root')
 ; ------------------------------------------------------------
 
 root3: make-context
 names3: copy []
 root3/logger/exporters: make map! []
-; debug(3) 需要 levels.default=3 (上游 setup 同款)
+; debug(3) requires levels.default=3 (same as upstream setup)
 root3/logger/exporter make object! [
     levels: make map! [default: 3]
     export: func [msg] [append names3 msg/name]
@@ -97,7 +97,7 @@ root3/logger/debug "hello"
 assert equal? "root" first names3 "默认 name = fiber name (root)"
 
 ; ------------------------------------------------------------
-; Test 4: 显式 name 参数 (上游 ctx.logger('custom'))
+; Test 4: explicit name parameter (upstream ctx.logger('custom'))
 ; ------------------------------------------------------------
 
 lg4: root3/logger/create 'custom
@@ -105,8 +105,8 @@ lg4/debug "hello"
 assert equal? "custom" names3/2 "显式 name 生效"
 
 ; ------------------------------------------------------------
-; Test 5: intercept name (上游 ctx.intercept('logger', {name}))
-; 注意: intercept 不可变 shadowing, 必须接住返回值
+; Test 5: intercept name (upstream ctx.intercept('logger', {name}))
+; Note: intercept uses immutable shadowing, so you must capture the returned ctx
 ; ------------------------------------------------------------
 
 root5: make-context
@@ -121,7 +121,7 @@ root5/logger/debug "hello"
 assert equal? "intercepted" first names5 "intercept name 生效"
 
 ; ------------------------------------------------------------
-; Test 6: level 过滤 — 默认 INFO(2): error/warn/info 过, debug 不过
+; Test 6: level filtering - default INFO(2): error/warn/info pass, debug does not
 ; ------------------------------------------------------------
 
 root6: make-context
@@ -139,7 +139,7 @@ assert equal? 3 length? types6 "默认 level INFO: 3 条通过"
 assert equal? 'error types6/1 "error 通过"
 assert not find types6 'debug "debug 被过滤"
 
-; levels.default = 3 (DEBUG) → 全部通过
+; levels.default = 3 (DEBUG) -> everything passes
 root6b: make-context
 types6b: copy []
 root6b/logger/exporters: make map! []
@@ -150,7 +150,7 @@ root6b/logger/exporter make object! [
 root6b/logger/debug "d"
 assert equal? 1 length? types6b "levels.default=3 时 debug 通过"
 
-; levels 按 name 单独配置: 只放行 foo 的 debug
+; levels can be configured per name: only allow foo's debug
 root6c: make-context
 types6c: copy []
 root6c/logger/exporters: make map! []
@@ -160,7 +160,7 @@ root6c/logger/exporter make object! [
 ]
 lg6c: root6c/logger/create 'foo
 lg6c/debug "d"
-root6c/logger/debug "x"   ; name=root, 未配置 → 默认 INFO → 过滤
+root6c/logger/debug "x"   ; name=root, not configured -> default INFO -> filtered out
 assert equal? 1 length? types6c "per-name levels 配置生效"
 
 print rejoin ["^/==== logger-test: " passed " passed, " failed " failed ===="]

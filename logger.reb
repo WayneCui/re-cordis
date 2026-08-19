@@ -1,23 +1,24 @@
 REBOL []
 
 ; ============================================================
-; logger.reb — cordis LoggerService 的 Rebol3 移植 (P8)
-; 上游: ref/core/logger.ts (240 行) + logger.spec.ts (可同步部分)
+; logger.reb - Rebol3 port of cordis LoggerService (P8)
+; Upstream: ref/core/logger.ts (240 lines) + logger.spec.ts (synchronously portable parts)
 ;
-; 语义映射:
-;   - LoggerService (extends Service) → make-logger-service (P7 make-service 注册 'logger)
-;   - createCallable → logger 服务对象方法 error/info/warn/debug
-;     + create name → logger 实例 (上游 ctx.logger('name'))
-;   - name 解析 (上游 [symbols.invoke]): 显式 name > intercept('logger').name
-;     > fiber name (fiber-name, 默认 "root")
-;   - level 过滤: exporter.levels[name] ?? levels.default ?? logger.level ?? INFO(2)
-;   - exporter: 注册返回 disposer; 默认 exporter 写 bounded buffer
-;   - message: [sn ts name type level args fiber] (ts 同步版固定 0)
+; Semantic mapping:
+;   - LoggerService (extends Service) -> make-logger-service (P7 make-service registers 'logger)
+;   - createCallable -> logger service object methods error/info/warn/debug
+;     + create name -> named logger instance (upstream ctx.logger('name'))
+;   - name resolution (upstream [symbols.invoke]): explicit name > intercept('logger').name
+;     > fiber name (fiber-name, default "root")
+;   - level filtering: exporter.levels[name] ?? levels.default ?? logger.level ?? INFO(2)
+;   - exporter: registration returns a disposer; the default exporter writes to the bounded buffer
+;   - message: [sn ts name type level args fiber] (ts is fixed at 0 in the synchronous version)
 ;
-; 简化 (ROADMAP §7):
-;   - 无 traceable 上下文穿透 → 服务内调用 name 一律走解析链 (不区分调用者 fiber)
-;   - 无 formatter/%s 占位符替换 → args 原样存 (测试断言 args/1)
-;   - 无 WeakRef → fiber-ref 直接引用或 none
+; Simplifications (ROADMAP §7):
+;   - No traceable context tunneling -> service-internal name lookup always follows the resolution chain
+;     (caller fiber is not distinguished)
+;   - No formatter/%s placeholder substitution -> args are stored as-is (tests assert against args/1)
+;   - No WeakRef -> fiber-ref is a direct reference or none
 ; ============================================================
 
 do %./utils.reb
@@ -29,7 +30,7 @@ do %./context.reb
 do %./service.reb
 
 ; ------------------------------------------------------------
-; level 常量 (上游 LoggerLevel)
+; level constants (upstream LoggerLevel)
 ; ------------------------------------------------------------
 
 logger-level: context [
@@ -39,7 +40,7 @@ logger-level: context [
     DEBUG: 3
 ]
 
-; type word → level 数字 (select 块内值都是字面量 → case 求值)
+; type word -> numeric level (values inside a select block are literals -> case evaluates them)
 logger-type-level: func [type [word!]] [
     case [
         equal? type 'error [logger-level/ERROR]
@@ -51,7 +52,7 @@ logger-type-level: func [type [word!]] [
 ]
 
 ; ------------------------------------------------------------
-; emit-log — 核心: level 过滤 + 分发到所有 exporter
+; emit-log - core logic: level filtering + dispatch to all exporters
 ; ------------------------------------------------------------
 
 emit-log: func [lg [object!] type [word!] args [block!] /local svc sn msg lvl sn-v type-v args-v] [
@@ -59,7 +60,7 @@ emit-log: func [lg [object!] type [word!] args [block!] /local svc sn msg lvl sn
     sn: svc/sn-message + 1
     svc/sn-message: sn
     lvl: logger-type-level type
-    ; 坑点: make object! [sn: sn] RHS 被自身字段遮蔽 → 前缀变量
+    ; Gotcha: in make object! [sn: sn], the RHS is shadowed by the new field -> use a prefixed variable
     sn-v: sn
     type-v: type
     args-v: args
@@ -73,7 +74,7 @@ emit-log: func [lg [object!] type [word!] args [block!] /local svc sn msg lvl sn
         fiber: lg/fiber-ref
     ]
     foreach [id exp] svc/exporters [
-        ; levels 键统一 word (lg/name 是 string → to-word 匹配)
+        ; Normalize levels keys to word (lg/name is a string -> match via to-word)
         target-level: any [
             select exp/levels to-word lg/name
             select exp/levels 'default
@@ -85,8 +86,8 @@ emit-log: func [lg [object!] type [word!] args [block!] /local svc sn msg lvl sn
 ]
 
 ; ------------------------------------------------------------
-; logger 实例工厂 (上游 Logger 类)
-; name: 显式 > intercept('logger').name > fiber-name
+; logger instance factory (upstream Logger class)
+; name: explicit > intercept('logger').name > fiber-name
 ; ------------------------------------------------------------
 
 logger-create: func [svc [object!] name [word! none!] /local cfg cfg-name lg] [
@@ -113,13 +114,13 @@ logger-create: func [svc [object!] name [word! none!] /local cfg cfg-name lg] [
     lg
 ]
 
-; 服务对象快捷方法 (上游 ctx.logger.info(...))
+; Shortcut methods on the service object (upstream ctx.logger.info(...))
 emit-svc: func [svc [object!] type [word!] msg] [
     emit-log logger-create svc none type reduce [msg]
 ]
 
 ; ------------------------------------------------------------
-; LoggerService 工厂
+; LoggerService factory
 ; ------------------------------------------------------------
 
 make-logger-service: func [root-ctx [object!] /local svc default-exp] [
@@ -132,8 +133,8 @@ make-logger-service: func [root-ctx [object!] /local svc default-exp] [
         sn-message: 0
         sn-exporter: 0
 
-        ; exporter 注册 → 返回 disposer (自包含)
-        ; 坑点: make object! [svc-ref: self] 里 self = 新对象自身 → 帧局部捕获
+        ; exporter registration -> returns a disposer (self-contained)
+        ; Gotcha: inside make object! [svc-ref: self], self points to the new object -> capture the frame-local value first
         exporter: func [exp [object!] /local id svc-obj] [
             svc-obj: self
             sn-exporter: svc-obj/sn-exporter + 1
@@ -149,18 +150,18 @@ make-logger-service: func [root-ctx [object!] /local svc default-exp] [
             ]
         ]
 
-        ; 便捷日志方法 (name 走解析链)
+        ; Shortcut log methods (name follows the resolution chain)
         error: func [msg] [emit-svc self 'error msg]
         warn: func [msg] [emit-svc self 'warn msg]
         info: func [msg] [emit-svc self 'info msg]
         debug: func [msg] [emit-svc self 'debug msg]
 
-        ; 命名 logger 实例
+        ; Named logger instance
         create: func [name [word! string!]] [logger-create self to-word name]
     ]
     make-service root-ctx 'logger svc
-    ; 默认 exporter: bounded buffer (上游构造时注册)
-    ; 坑点: 方法不能闭包帧局部 svc → svc-ref 字段自包含
+    ; Default exporter: bounded buffer (registered during upstream construction)
+    ; Gotcha: methods cannot close over the frame-local svc -> make it self-contained through the svc-ref field
     default-exp: make object! [
         svc-ref: svc
         levels: make map! []

@@ -1,20 +1,20 @@
 REBOL []
 
 ; ============================================================
-; reflect.reb — cordis ReflectService 的 Rebol3 移植 (P4 + P6 isolate)
-; 上游: ref/core/reflect.ts (281 行) + isolate 语义
+; reflect.reb - Rebol3 port of cordis ReflectService (P4 + P6 isolate)
+; Upstream: ref/core/reflect.ts (281 lines) + isolate semantics
 ;
-; 语义映射:
-;   - Proxy handler → 显式方法 (ROADMAP §4.1)
-;   - store 键 = isolate 标签 + name (isolate 链, ROADMAP §4.6):
-;     "iso-xxx/foo" 字符串键; root 默认标签 'default
-;   - 方法显式接收 act-ctx (上游 traceable 隐式, Rebol 显式)
-;   - provide → fiber.effect 注册 impl + notify; 返回 disposer
-;   - notify → 遍历 all-fibers, 同 isolate 标签的注入 fiber 才响应
-;   - accessor/mixin → 简化
-;   - trace/bind → 原样返回 (traceable 丢弃)
+; Semantic mapping:
+;   - Proxy handler -> explicit methods (ROADMAP §4.1)
+;   - store key = isolate label + name (isolate chain, ROADMAP §4.6):
+;     string key "iso-xxx/foo"; root defaults to label 'default
+;   - Methods explicitly receive act-ctx (upstream traceable is implicit, Rebol is explicit)
+;   - provide -> register impl via fiber.effect + notify; returns a disposer
+;   - notify -> walk all-fibers; only injected fibers under the same isolate label respond
+;   - accessor/mixin -> simplified
+;   - trace/bind -> returned unchanged (traceable is dropped)
 ;
-; 关键约束: 回调存 wrapper 对象; 对象比较用 same?; make map! 用 compose
+; Key constraints: callbacks are stored as wrapper objects; object comparison uses same?; use compose with make map!
 ; ============================================================
 
 do %./utils.reb
@@ -22,12 +22,12 @@ do %./events.reb
 do %./fiber.reb
 
 ; ------------------------------------------------------------
-; isolate 辅助
+; isolate helpers
 ; ------------------------------------------------------------
 
 default-isolate: 'default
 
-; ctx 的 isolate 标签 (name → label)
+; ctx isolate label (name -> label)
 ctx-isolate-label: func [ctx [object!] name [word!] /local m] [
     m: select ctx 'isolate-map
     either m [
@@ -35,13 +35,13 @@ ctx-isolate-label: func [ctx [object!] name [word!] /local m] [
     ][default-isolate]
 ]
 
-; store 键 = "label/name" (字符串键, 隔离不同 ctx 的同类服务)
+; store key = "label/name" (string key, isolates same-kind services across different ctx instances)
 isolate-store-key: func [ctx [object!] name [word!]] [
     rejoin [ctx-isolate-label ctx name  "/"  to-string name]
 ]
 
 ; ------------------------------------------------------------
-; notify — 通知同 isolate 标签下注入该服务的所有 fiber
+; notify - inform all fibers that inject this service under the same isolate label
 ; ------------------------------------------------------------
 
 reflect-notify: func [svc [object!] names [block!] act-ctx [object!] /local fb name updated impl] [
@@ -49,7 +49,7 @@ reflect-notify: func [svc [object!] names [block!] act-ctx [object!] /local fb n
         updated: false
         foreach name names [
             if find keys-of fb/inject name [
-                ; filter: 同 isolate 标签才响应
+                ; filter: only the same isolate label should react
                 if equal? ctx-isolate-label fb/ctx name  ctx-isolate-label act-ctx name [
                     updated: true
                     fiber-check-impl fb name
@@ -58,7 +58,7 @@ reflect-notify: func [svc [object!] names [block!] act-ctx [object!] /local fb n
         ]
         if updated [fiber-refresh fb]
     ]
-    ; internal/service 事件
+    ; internal/service event
     foreach name names [
         impl: svc/get-impl name false act-ctx
         svc/ctx/events/emit 'internal-service reduce [name  either impl [impl/value][none]] none
@@ -67,17 +67,17 @@ reflect-notify: func [svc [object!] names [block!] act-ctx [object!] /local fb n
 ]
 
 ; ------------------------------------------------------------
-; ReflectService 工厂
+; ReflectService factory
 ; ------------------------------------------------------------
 
 make-reflect-service: func [root-ctx [object!] /local svc] [
     svc: make object! [
         ctx: root-ctx
-        store: make map! []      ; "label/name" → impl
-        props: make map! []      ; name → 属性声明 map!
+        store: make map! []      ; "label/name" -> impl
+        props: make map! []      ; name -> property declaration map!
 
         ; ----------------------------------------------------
-        ; 查询 (显式 act-ctx)
+        ; Query operations (explicit act-ctx)
         ; ----------------------------------------------------
         get-impl: func [name [word!] strict [logic!] act-ctx [object!] /local key impl] [
             key: isolate-store-key act-ctx name
@@ -111,14 +111,14 @@ make-reflect-service: func [root-ctx [object!] /local svc] [
         ]
 
         ; ----------------------------------------------------
-        ; provide — 注册服务 (fiber.effect, 卸载自动清理)
+        ; provide - register a service (fiber.effect, auto-cleaned on unload)
         ; ----------------------------------------------------
         provide: func [name [word!] value check [object! none!] act-ctx [object!] /local ex] [
-            ; 坑点: make object! 内 self = 新对象自身 → 先取 ex 帧局部
+            ; Gotcha: inside make object!, self points to the new object -> capture the ex frame-local value first
             ex: func [/local svc-obj key] [
                 svc-obj: self
                 key: isolate-store-key act-ctx name
-                ; props 声明
+                ; props declaration
                 p: select svc-obj/props name
                 either p [
                     if not equal? select p 'type "service" [
@@ -128,7 +128,7 @@ make-reflect-service: func [root-ctx [object!] /local svc] [
                 ][
                     put svc-obj/props name make map! [type: "service"]
                 ]
-                ; 重复注册检查 (同 isolate)
+                ; Duplicate registration check (within the same isolate)
                 if select svc-obj/store key [
                     print rejoin ["[ReflectError] service " to-string name " has been registered"]
                     return none
@@ -144,7 +144,7 @@ make-reflect-service: func [root-ctx [object!] /local svc] [
                 if equal? act-ctx/fiber/state fiber-state/ACTIVE [
                     reflect-notify svc-obj reduce [name] act-ctx
                 ]
-                ; disposer — 自包含 (svc-ref/key-ref 字段)
+                ; disposer - self-contained (svc-ref/key-ref fields)
                 make object! [
                     svc-ref: svc-obj
                     key-ref: key
@@ -164,7 +164,7 @@ make-reflect-service: func [root-ctx [object!] /local svc] [
         ]
 
         ; ----------------------------------------------------
-        ; accessor — 声明访问器属性 (get/set 为 wrapper 对象)
+        ; accessor - declare accessor properties (get/set are wrapper objects)
         ; ----------------------------------------------------
         accessor: func [name [word! lit-word!] options [map!] /local ex] [
             ex: func [/local svc-obj] [
@@ -191,20 +191,20 @@ make-reflect-service: func [root-ctx [object!] /local svc] [
         ]
 
         ; ----------------------------------------------------
-        ; mixin — 委托 accessor: ctx.<key> 从 source 服务取字段
+        ; mixin - delegated accessor: ctx.<key> reads a field from the source service
         ; ----------------------------------------------------
         mixin: func [source [word!] mixins [block!] /local ex] [
             ex: func [/local svc-obj key get-w raw-key] [
                 svc-obj: self
                 foreach raw-key mixins [
-                    ; lit-word 键与对象字段 word 不匹配 → to-word
+                    ; lit-word keys do not match object field words -> convert with to-word
                     key: to-word raw-key
                     get-w: make object! [
                         svc-ref: svc-obj
                         src: source
                         k: key
                         call: func [args [block!] this-arg [object! none!] /local impl s act] [
-                            ; 显式版: 从 reflect store 取服务 (无 Proxy 字段)
+                            ; Explicit version: read the service from reflect store (no Proxy field)
                             act: either this-arg [this-arg][svc-ref/ctx]
                             impl: svc-ref/get-impl src true act
                             either impl [
@@ -224,7 +224,7 @@ make-reflect-service: func [root-ctx [object!] /local svc] [
         ]
 
         ; ----------------------------------------------------
-        ; trace/bind — traceable 丢弃, 原样返回
+        ; trace/bind - traceable is dropped, return the value unchanged
         ; ----------------------------------------------------
         trace: func [value] [value]
         bind: func [value] [value]
@@ -233,7 +233,7 @@ make-reflect-service: func [root-ctx [object!] /local svc] [
 ]
 
 ; ------------------------------------------------------------
-; 错误助手
+; Error helper
 ; ------------------------------------------------------------
 
 reflect-error: func [msg [string!]] [

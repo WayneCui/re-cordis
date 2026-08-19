@@ -1,9 +1,9 @@
 REBOL []
 
 ; ============================================================
-; test/utils-test.reb — utils.reb 行为测试 (P1)
-; 上游无 utils.spec.ts, 按 TS DisposableList 语义自写断言
-; 运行: rebol3 -s test/utils-test.reb
+; test/utils-test.reb - behavior tests for utils.reb (P1)
+; No upstream utils.spec.ts, so assertions are written against TS DisposableList semantics
+; Run: rebol3 -s test/utils-test.reb
 ; ============================================================
 
 do %../utils.reb
@@ -34,21 +34,21 @@ d3: l/push 333
 assert equal? 3 l/length "push 3 个后 length = 3"
 assert equal? [111 222 333] l/values "values 按插入序"
 
-; disposer 删除中间项
+; disposer removes a middle item
 d2/dispose
 assert equal? 2 l/length "dispose 后 length = 2"
 assert equal? [111 333] l/values "dispose 后 values 正确"
 
-; 再次 dispose 幂等 (删除不存在的 idx 无害)
+; dispose is idempotent when called again (harmless if the idx is already gone)
 d2/dispose
 assert equal? 2 l/length "重复 dispose 幂等"
 
-; clear 返回逆序
+; clear returns values in reverse order
 vals: l/clear
 assert equal? [333 111] vals "clear 返回逆序 values"
 assert equal? 0 l/length "clear 后 length = 0"
 
-; delete 按值删除 (身份比较)
+; delete removes by value (identity comparison)
 d4: l/push 444
 d5: l/push 555
 assert l/delete 444 "delete 找到并删除"
@@ -56,7 +56,7 @@ assert equal? [555] l/values "delete 后 values 正确"
 assert not l/delete 999 "delete 不存在的值返回 false"
 assert equal? 1 l/length "delete 失败后 length 不变"
 
-; 对象值也能存
+; Object values can also be stored
 obj1: make object! [x: 1]
 obj2: make object! [x: 2]
 do1: l/push obj1
@@ -65,7 +65,7 @@ assert equal? 3 l/length "对象值 push 后 length = 3"
 do1/dispose
 assert equal? reduce [555 obj2] l/values "对象 disposer 按身份删除"
 
-; clear 后 disposer 仍可调用 (无害)
+; After clear, calling the disposer is still harmless
 l/clear
 d5/dispose
 assert equal? 0 l/length "clear 后 disposer 调用无害"
