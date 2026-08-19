@@ -1,0 +1,46 @@
+# 第 05 章 注册表将插件转化为运行时
+
+在经历了前几章之后，`registry.reb` 读起来几乎就像是所有组件最终在一种共同语言上达成一致的地方。一个插件声明可以是一个普通的对象，包含 `apply`、一个 `inject` 字段，可能还有一个 `Config` 钩子。注册表（registry）的工作是将这个声明规范化为一个运行时身份（runtime identity），然后要求 `fiber.reb` 创建一个实时的激活实例。
+
+运行时身份与实时激活实例之间的这种分离很容易被忽略，但这正是重复注册插件能够表现合理的巧思所在。Cordis 并不希望每次调用都产生一个运行时记录。它希望每个回调对应一个运行时记录，外加多个可能在该运行时下处于活跃状态的 Fiber。Rebol 移植版保持了相同的区分，只不过是在一个更字面化的数据结构中：`runtimes` 是一个包含运行时对象的块（block），而 `find-runtime` 通过回调的身份进行匹配。
+
+## 注册表是插件声明不再仅仅是语法的地方
+
+天真的设计会让 `ctx.plugin` 直接调用 `plugin/apply`，然后把其他一切抛诸脑后。这在第一个理想情况（happy-path）的演示中可能会起作用，但在自省（introspection）、重复注册、清理，以及任何需要稳定运行时身份的特性上，会立即遭遇失败。相反，`registry.reb` 构建或重用一个包含 `name`、`callback`、`fibers` 和可选的 `Config` 的运行时对象，然后通过 `resolve-inject` 解析 `inject`，最后将一切交给 `make-plugin-fiber`。
+
+这也是移植版用数据取代装饰器（decorators）的地方。上游的 Cordis 可以通过 `@Inject` 积累注入元数据。Rebol 版本选择了一种直白但可读的形式：在插件对象上声明 `inject: ['foo 'bar]`，或者将一个块（block）传递给注册表的 `inject` 辅助函数。这在语法修饰上是一种损失，但在运行时的透明度上却是一种收获。
+
+删除路径展示了为什么运行时/Fiber 的分离值得这种额外的结构。`delete` 移除运行时，然后清理注册在它之下的每一个 Fiber。如果没有这种分离，清理过程要么会遗漏一些激活实例，要么需要通过更弱的簿记（bookkeeping）机制重新发现它们。
+
+---
+
+## 实验
+
+```bash
+cd ch05-registry-plugins/code
+bash run.sh
+```
+
+预期输出：
+
+```text
+PASS  object plugin apply runs once
+PASS  the same plugin reuses one runtime
+PASS  delete drops the runtime size to zero
+==== registry-test: 41 passed, 0 failed ====
+```
+
+### 试一试
+
+1. 在 `../../registry.reb` 中，强制 `plugin` 每次都创建一个全新的运行时，并比较产生的 `size` 断言。
+2. 修改 `resolve-inject`，使块（block）中的条目不再通过 `to-word` 规范化，然后观察当测试传递字面单词（literal words）时查找是如何发生偏移的。
+3. 在 `../../test/registry-test.reb` 中，在同一个插件下添加第二个 Fiber，并检查删除前后运行时的 `fibers` 列表。
+
+### 对照源码
+
+| 路径 | 符号 |
+|------|--------|
+| `registry.reb` | `make-registry-service`, `resolve-inject`, `plugin`, `delete`, `inject` |
+| `ref/core/registry.ts` | `RegistryService`, `Inject.resolve`, `plugin()`, `delete()` |
+
+移植版失去了装饰器机制，但它保留了这样一种操作上的理念，即一个插件注册会变成一个运行时记录加上一个 Fiber 的激活。
