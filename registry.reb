@@ -111,8 +111,10 @@ make-registry-service: func [root-ctx [object!] /local svc] [
             p: make object! [
                 name: none
                 inject: deps
-                apply: func [ctx [object!] config] [do reduce [apply-word ctx config]]
+                apply-word-ref: none
+                apply: func [ctx [object!] config] [do reduce [apply-word-ref ctx config]]
             ]
+            p/apply-word-ref: apply-word
             p/name: to-string apply-word
             self/plugin p none ctx
         ]

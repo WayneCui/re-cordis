@@ -1,0 +1,14 @@
+# root-a
+fiber.create | fiber="consumer#1" | runtime="consumer"
+effect.register | fiber="root#0" | label="ctx.plugin()" | children=0
+service.provide | name=foo | fiber="root#0" | scope=default
+service.notify | names=[foo] | scope=default
+fiber.epoch | fiber="consumer#1" | from="__INACTIVE__" | to=":0"
+fiber.state | fiber="consumer#1" | from="PENDING" | to="LOADING"
+fiber.state | fiber="consumer#1" | from="LOADING" | to="ACTIVE"
+event.dispatch | mode=emit | name=internal-service
+effect.register | fiber="root#0" | label="ctx.provide(foo)" | children=0
+
+# root-b
+fiber.create | fiber="consumer#1" | runtime="consumer"
+effect.register | fiber="root#0" | label="ctx.plugin()" | children=0

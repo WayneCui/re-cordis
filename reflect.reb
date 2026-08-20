@@ -20,6 +20,7 @@ REBOL []
 do %./utils.reb
 do %./events.reb
 do %./fiber.reb
+do %./runtime-scope.reb
 
 ; ------------------------------------------------------------
 ; isolate helpers
@@ -45,7 +46,11 @@ isolate-store-key: func [ctx [object!] name [word!]] [
 ; ------------------------------------------------------------
 
 reflect-notify: func [svc [object!] names [block!] act-ctx [object!] /local fb name updated impl] [
-    foreach fb all-fibers [
+    runtime-record act-ctx 'service.notify reduce [
+        'names names
+        'scope (ctx-isolate-label act-ctx first names)
+    ]
+    foreach fb runtime-fibers-of act-ctx [
         updated: false
         foreach name names [
             if find keys-of fb/inject name [
@@ -141,6 +146,11 @@ make-reflect-service: func [root-ctx [object!] /local svc] [
                 put svc-obj/store key impl
                 unless act-ctx/fiber/store [act-ctx/fiber/store: make map! []]
                 put act-ctx/fiber/store name impl
+                runtime-record act-ctx 'service.provide reduce [
+                    'name name
+                    'fiber (fiber-tag act-ctx/fiber)
+                    'scope (ctx-isolate-label act-ctx name)
+                ]
                 if equal? act-ctx/fiber/state fiber-state/ACTIVE [
                     reflect-notify svc-obj reduce [name] act-ctx
                 ]
@@ -152,6 +162,11 @@ make-reflect-service: func [root-ctx [object!] /local svc] [
                     ctx-ref: act-ctx
                     dispose: func [] [
                         svc-ref/store: map-remove-key svc-ref/store key-ref
+                        runtime-record ctx-ref 'service.unprovide reduce [
+                            'name name-ref
+                            'fiber (fiber-tag ctx-ref/fiber)
+                            'scope (ctx-isolate-label ctx-ref name-ref)
+                        ]
                         reflect-notify svc-ref reduce [name-ref] ctx-ref
                         if ctx-ref/fiber/store [
                             ctx-ref/fiber/store: map-remove-key ctx-ref/fiber/store name-ref

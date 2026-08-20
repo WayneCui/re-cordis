@@ -20,9 +20,12 @@
 
 ## 实验
 
+> **Day 3 阅读清单**：[fiber-reading-guide-zh-CN.md](../fiber-reading-guide-zh-CN.md)（逐函数 + 行号 + 测试锚点）
+
 ```bash
 cd ch03-fiber-epochs/code
 bash run.sh
+bash probe-epoch.sh   # 观察 epoch / state 变化（实验 2/3）
 ```
 
 预期输出：

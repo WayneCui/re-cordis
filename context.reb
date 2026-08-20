@@ -18,6 +18,7 @@ REBOL []
 ; ============================================================
 
 do %./utils.reb
+do %./runtime-scope.reb
 do %./events.reb
 do %./fiber.reb
 do %./reflect.reb
@@ -38,6 +39,7 @@ make-child-ctx: func [root-ctx [object! none!] props [map!] /local new root-ref]
         logger: none
         filter: none
         root-ref: none
+        runtime-scope-ref: none
         isolate-map: make map! []     ; name -> label word
         intercept-chain: copy []      ; [leaf ... root] chained block, newest at the head (ROADMAP §4.6)
         extra: make map! []           ; unknown fields from extend (objects cannot add fields dynamically)
@@ -81,9 +83,10 @@ make-child-ctx: func [root-ctx [object! none!] props [map!] /local new root-ref]
         ] [make-logger-service new] [root-ctx/logger]
         new/filter: select props 'filter
         new/root-ref: root-ref
+        new/runtime-scope-ref: any [select props 'runtime-scope-ref  root-ctx/runtime-scope-ref]
         ; Store unknown fields in extra (objects cannot add fields dynamically)
         foreach [k v] props [
-            unless find [fiber events registry reflect logger filter isolate-map intercept-chain root-ref] k [
+            unless find [fiber events registry reflect logger filter isolate-map intercept-chain root-ref runtime-scope-ref] k [
                 put new/extra k v
             ]
         ]
@@ -102,6 +105,7 @@ make-child-ctx: func [root-ctx [object! none!] props [map!] /local new root-ref]
 make-context: func [/local ctx rf] [
     ctx: make-child-ctx none make map! []
     ctx/root-ref: ctx
+    ctx/runtime-scope-ref: make-runtime-scope ctx
     rf: make-fiber-root ctx
     ctx/fiber: rf
     ctx/reflect: make-reflect-service ctx

@@ -20,9 +20,12 @@ Think of a fiber here as a signed room reservation, not as a worker. The reserva
 
 ## Experiments
 
+> **Day 3 reading guide**: [fiber-reading-guide-zh-CN.md](../fiber-reading-guide-zh-CN.md) (function-by-function, line ranges, test anchors)
+
 ```bash
 cd ch03-fiber-epochs/code
 bash run.sh
+bash probe-epoch.sh   # watch epoch/state transitions (labs 2/3)
 ```
 
 Expected output:

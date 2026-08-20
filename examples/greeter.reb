@@ -120,9 +120,6 @@ print "(no served: after dispose -- listeners are gone)"
 ; Scene 2: isolate -- three rooms, each provide is private
 ; ------------------------------------------------------------
 
-; all-fibers is process-global; clear so scene-1 fibers are not notified.
-clear all-fibers
-
 print "^/=== scene 2: isolate rooms ==="
 root2: make-context
 root2/registry/plugin iso-guest make map! [room: "root"] root2

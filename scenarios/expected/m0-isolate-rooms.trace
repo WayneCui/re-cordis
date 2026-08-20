@@ -1,0 +1,27 @@
+fiber.create | fiber="iso-guest#1" | runtime="iso-guest"
+effect.register | fiber="root#0" | label="ctx.plugin()" | children=0
+fiber.create | fiber="iso-guest#2" | runtime="iso-guest"
+effect.register | fiber="root#0" | label="ctx.plugin()" | children=0
+fiber.create | fiber="iso-guest#3" | runtime="iso-guest"
+effect.register | fiber="root#0" | label="ctx.plugin()" | children=0
+service.provide | name=greeter | fiber="root#0" | scope=default
+service.notify | names=[greeter] | scope=default
+fiber.epoch | fiber="iso-guest#1" | from="__INACTIVE__" | to=":0:0:0"
+fiber.state | fiber="iso-guest#1" | from="PENDING" | to="LOADING"
+fiber.state | fiber="iso-guest#1" | from="LOADING" | to="ACTIVE"
+event.dispatch | mode=emit | name=internal-service
+effect.register | fiber="root#0" | label="ctx.provide(greeter)" | children=0
+service.provide | name=greeter | fiber="root#0" | scope=room-a
+service.notify | names=[greeter] | scope=room-a
+fiber.epoch | fiber="iso-guest#2" | from="__INACTIVE__" | to=":0:0:0"
+fiber.state | fiber="iso-guest#2" | from="PENDING" | to="LOADING"
+fiber.state | fiber="iso-guest#2" | from="LOADING" | to="ACTIVE"
+event.dispatch | mode=emit | name=internal-service
+effect.register | fiber="root#0" | label="ctx.provide(greeter)" | children=0
+service.provide | name=greeter | fiber="root#0" | scope=room-b
+service.notify | names=[greeter] | scope=room-b
+fiber.epoch | fiber="iso-guest#3" | from="__INACTIVE__" | to=":0:0:0"
+fiber.state | fiber="iso-guest#3" | from="PENDING" | to="LOADING"
+fiber.state | fiber="iso-guest#3" | from="LOADING" | to="ACTIVE"
+event.dispatch | mode=emit | name=internal-service
+effect.register | fiber="root#0" | label="ctx.provide(greeter)" | children=0

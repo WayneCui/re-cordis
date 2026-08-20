@@ -19,6 +19,7 @@ REBOL []
 ; ============================================================
 
 do %./utils.reb
+do %./runtime-scope.reb
 
 ; ------------------------------------------------------------
 ; Helpers
@@ -92,6 +93,10 @@ make-events-service: func [root-ctx [object!] /local svc ilw] [
                     remove args
                 ]
             ]
+            runtime-record any [this-arg self/ctx] 'event.dispatch reduce [
+                'mode 'emit
+                'name name
+            ]
             callbacks: resolve-callbacks 'emit name args this-arg
             foreach cb callbacks [cb/call args this-arg]
             none
@@ -104,6 +109,10 @@ make-events-service: func [root-ctx [object!] /local svc ilw] [
                     this-arg: args/1
                     remove args
                 ]
+            ]
+            runtime-record any [this-arg self/ctx] 'event.dispatch reduce [
+                'mode 'parallel
+                'name name
             ]
             callbacks: resolve-callbacks 'parallel name args this-arg
             errors: copy []
@@ -122,6 +131,10 @@ make-events-service: func [root-ctx [object!] /local svc ilw] [
                     remove args
                 ]
             ]
+            runtime-record any [this-arg self/ctx] 'event.dispatch reduce [
+                'mode 'serial
+                'name name
+            ]
             callbacks: resolve-callbacks 'serial name args this-arg
             foreach cb callbacks [
                 r: cb/call args this-arg
@@ -138,6 +151,10 @@ make-events-service: func [root-ctx [object!] /local svc ilw] [
                     remove args
                 ]
             ]
+            runtime-record any [this-arg self/ctx] 'event.dispatch reduce [
+                'mode 'bail
+                'name name
+            ]
             callbacks: resolve-callbacks 'bail name args this-arg
             foreach cb callbacks [
                 r: cb/call args this-arg
@@ -153,6 +170,10 @@ make-events-service: func [root-ctx [object!] /local svc ilw] [
                     this-arg: args/1
                     remove args
                 ]
+            ]
+            runtime-record any [this-arg self/ctx] 'event.dispatch reduce [
+                'mode 'waterfall
+                'name name
             ]
             callbacks: resolve-callbacks 'waterfall name args this-arg
             ; next wrapper - self-contained (cbs/arg-block/inner-w/this-ref are all fields)

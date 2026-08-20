@@ -25,6 +25,7 @@ REBOL []
 
 do %./utils.reb
 do %./events.reb
+do %./runtime-scope.reb
 
 ; ------------------------------------------------------------
 ; Constants
@@ -40,9 +41,6 @@ fiber-state: context [
     DISPOSED: 4
     UNLOADING: 5
 ]
-
-; Registry of all plugin fibers (used by notify before P4 reflect is formalized)
-all-fibers: copy []
 
 ; ------------------------------------------------------------
 ; fiber type
@@ -99,6 +97,26 @@ block-remove-same: func [b [block!] v /local i] [
     b
 ]
 
+fiber-state-name: func [state [integer! none!]] [
+    case [
+        none? state ["none"]
+        equal? state fiber-state/PENDING ["PENDING"]
+        equal? state fiber-state/LOADING ["LOADING"]
+        equal? state fiber-state/ACTIVE ["ACTIVE"]
+        equal? state fiber-state/FAILED ["FAILED"]
+        equal? state fiber-state/DISPOSED ["DISPOSED"]
+        equal? state fiber-state/UNLOADING ["UNLOADING"]
+        true [rejoin ["STATE-" state]]
+    ]
+]
+
+fiber-tag: func [fb [object! none!] /local name uid] [
+    unless fb [return "none"]
+    name: either all [fb/runtime  fb/runtime/name] [fb/runtime/name]["root"]
+    uid: either none? fb/uid ["disposed"][to-string fb/uid]
+    rejoin [name "#" uid]
+]
+
 ; ------------------------------------------------------------
 ; resolveConfig - simplified version (schema validation is added later in P7 service)
 ; ------------------------------------------------------------
@@ -147,6 +165,11 @@ fiber-update-state: func [fb [object!] new-state [integer! none!] /local old] [
     old: fb/state
     either new-state [fb/state: new-state][fb/state: fiber-get-state fb]
     if equal? old fb/state [exit]
+    runtime-record fb/ctx 'fiber.state reduce [
+        'fiber (fiber-tag fb)
+        'from (fiber-state-name old)
+        'to (fiber-state-name fb/state)
+    ]
     fb/ctx/events/emit 'internal-status reduce [fb old] fb
     ; Only notify ACTIVE <-> non-ACTIVE transitions
     either equal? old fiber-state/ACTIVE [
@@ -208,6 +231,11 @@ fiber-set-epoch: func [fb [object!] epoch-str [string!] /local old] [
     old: fb/epoch
     if equal? epoch-str old [exit]
     fb/epoch: epoch-str
+    runtime-record fb/ctx 'fiber.epoch reduce [
+        'fiber (fiber-tag fb)
+        'from old
+        'to epoch-str
+    ]
     if fb/inertia [exit]
     fb/inertia: true
     either equal? epoch-str inactive-epoch [
@@ -266,6 +294,7 @@ fiber-reload: func [fb [object!] /local old-epoch result d] [
 fiber-unload: func [fb [object!] /local ds d r] [
     ds: fb/disposables/clear
     foreach d ds [
+        if in d 'dispose-reason [d/dispose-reason: "unload"]
         ; Append none at the end so try still yields none rather than unset when dispose has no return value
         r: try [d/dispose  none]
         if error? r [fb/ctx/logger/error r]
@@ -332,10 +361,18 @@ fiber-effect: func [fb [object!] execute [function!] label [string!] /local loca
     wrapper: make object! [
         done: false
         items: local-list
+        owner-fiber: fb
+        dispose-reason: none
         ; Gotcha: in make object! [label: label], the RHS is shadowed by the new field -> assign after creation
         meta: make object! [label: none  children: copy []]
         dispose: func [] [
             if done [exit]
+            runtime-record owner-fiber/ctx 'effect.dispose reduce [
+                'fiber (fiber-tag owner-fiber)
+                'label meta/label
+                'reason any [dispose-reason  "manual"]
+            ]
+            dispose-reason: none
             done: true
             foreach d reverse items [d/dispose]
             none
@@ -344,6 +381,11 @@ fiber-effect: func [fb [object!] execute [function!] label [string!] /local loca
     wrapper/meta/label: label
     wrapper/meta/children: children-list
     fb/disposables/push wrapper
+    runtime-record fb/ctx 'effect.register reduce [
+        'fiber (fiber-tag fb)
+        'label label
+        'children (length? children-list)
+    ]
     wrapper
 ]
 
@@ -453,7 +495,11 @@ make-plugin-fiber: func [parent-ctx [object!] config inject-map [map!] runtime [
     child-ctx: parent-ctx/extend make map! compose [fiber: (fb)]
     fb/ctx: child-ctx
 
-    append all-fibers fb
+    runtime-register-fiber parent-ctx fb
+    runtime-record parent-ctx 'fiber.create reduce [
+        'fiber (fiber-tag fb)
+        'runtime runtime/name
+    ]
 
     ; internal/plugin event
     fb/ctx/events/emit 'internal-plugin reduce [fb] fb
@@ -465,8 +511,8 @@ make-plugin-fiber: func [parent-ctx [object!] config inject-map [map!] runtime [
     ; Function arguments must be passed as :word (Oldes auto-call)
     ex: func [] [
         ; Insert into runtime.fibers (DisposableList push -> remove disposer)
-        remove-fn: runtime/fibers/push fb
-        fb/config: resolve-config runtime config
+        remove-fn: fb/runtime/fibers/push fb
+        fb/config: (resolve-config fb/runtime fb/config)
         fiber-refresh fb
         ; Return the unload disposer (self-contained)
         dispose-fn: make object! [
@@ -474,6 +520,11 @@ make-plugin-fiber: func [parent-ctx [object!] config inject-map [map!] runtime [
             remover: remove-fn
             dispose: func [] [
                 if none? target-fb/uid [exit]
+                runtime-record target-fb/ctx 'fiber.dispose reduce [
+                    'fiber (fiber-tag target-fb)
+                    'reason "plugin-dispose"
+                ]
+                runtime-unregister-fiber target-fb/ctx target-fb
                 target-fb/uid: none
                 target-fb/ctx/events/emit 'internal-plugin reduce [target-fb] target-fb
                 ; Registry cleanup (formalized in P5)

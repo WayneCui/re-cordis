@@ -1,0 +1,63 @@
+fiber.create | fiber="receptionist#1" | runtime="receptionist"
+effect.register | fiber="root#0" | label="ctx.plugin()" | children=0
+fiber.create | fiber="greeter#2" | runtime="greeter"
+fiber.epoch | fiber="greeter#2" | from="__INACTIVE__" | to=":2:2"
+fiber.state | fiber="greeter#2" | from="PENDING" | to="LOADING"
+service.provide | name=greeter | fiber="greeter#2" | scope=default
+effect.register | fiber="greeter#2" | label="ctx.provide(greeter)" | children=0
+fiber.state | fiber="greeter#2" | from="LOADING" | to="ACTIVE"
+service.notify | names=[greeter] | scope=default
+fiber.epoch | fiber="receptionist#1" | from="__INACTIVE__" | to=":2:2"
+fiber.state | fiber="receptionist#1" | from="PENDING" | to="LOADING"
+event.dispatch | mode=bail | name=internal-listener
+effect.register | fiber="receptionist#1" | label="ctx.on(guest-arrived)" | children=0
+effect.register | fiber="receptionist#1" | label="desk" | children=0
+fiber.state | fiber="receptionist#1" | from="LOADING" | to="ACTIVE"
+event.dispatch | mode=emit | name=internal-service
+effect.register | fiber="root#0" | label="ctx.plugin()" | children=0
+event.dispatch | mode=emit | name=guest-arrived
+fiber.epoch | fiber="greeter#2" | from=":2:2" | to="__INACTIVE__"
+fiber.state | fiber="greeter#2" | from="ACTIVE" | to="UNLOADING"
+service.notify | names=[greeter] | scope=default
+fiber.epoch | fiber="receptionist#1" | from=":2:2" | to="__INACTIVE__"
+fiber.state | fiber="receptionist#1" | from="ACTIVE" | to="UNLOADING"
+effect.dispose | fiber="receptionist#1" | label="desk" | reason="unload"
+effect.dispose | fiber="receptionist#1" | label="ctx.on(guest-arrived)" | reason="unload"
+fiber.state | fiber="receptionist#1" | from="UNLOADING" | to="PENDING"
+event.dispatch | mode=emit | name=internal-service
+effect.dispose | fiber="greeter#2" | label="ctx.provide(greeter)" | reason="unload"
+service.unprovide | name=greeter | fiber="greeter#2" | scope=default
+service.notify | names=[greeter] | scope=default
+event.dispatch | mode=emit | name=internal-service
+fiber.state | fiber="greeter#2" | from="UNLOADING" | to="PENDING"
+fiber.epoch | fiber="greeter#2" | from="__INACTIVE__" | to=":2:2"
+fiber.state | fiber="greeter#2" | from="PENDING" | to="LOADING"
+service.provide | name=greeter | fiber="greeter#2" | scope=default
+effect.register | fiber="greeter#2" | label="ctx.provide(greeter)" | children=0
+fiber.state | fiber="greeter#2" | from="LOADING" | to="ACTIVE"
+service.notify | names=[greeter] | scope=default
+fiber.epoch | fiber="receptionist#1" | from="__INACTIVE__" | to=":2:2"
+fiber.state | fiber="receptionist#1" | from="PENDING" | to="LOADING"
+event.dispatch | mode=bail | name=internal-listener
+effect.register | fiber="receptionist#1" | label="ctx.on(guest-arrived)" | children=0
+effect.register | fiber="receptionist#1" | label="desk" | children=0
+fiber.state | fiber="receptionist#1" | from="LOADING" | to="ACTIVE"
+event.dispatch | mode=emit | name=internal-service
+effect.dispose | fiber="root#0" | label="ctx.plugin()" | reason="manual"
+fiber.dispose | fiber="receptionist#1" | reason="plugin-dispose"
+fiber.epoch | fiber="receptionist#disposed" | from=":2:2" | to="__INACTIVE__"
+fiber.state | fiber="receptionist#disposed" | from="ACTIVE" | to="UNLOADING"
+effect.dispose | fiber="receptionist#disposed" | label="desk" | reason="unload"
+effect.dispose | fiber="receptionist#disposed" | label="ctx.on(guest-arrived)" | reason="unload"
+fiber.state | fiber="receptionist#disposed" | from="UNLOADING" | to="DISPOSED"
+effect.dispose | fiber="root#0" | label="ctx.plugin()" | reason="manual"
+fiber.dispose | fiber="greeter#2" | reason="plugin-dispose"
+fiber.epoch | fiber="greeter#disposed" | from=":2:2" | to="__INACTIVE__"
+fiber.state | fiber="greeter#disposed" | from="ACTIVE" | to="UNLOADING"
+service.notify | names=[greeter] | scope=default
+event.dispatch | mode=emit | name=internal-service
+effect.dispose | fiber="greeter#disposed" | label="ctx.provide(greeter)" | reason="unload"
+service.unprovide | name=greeter | fiber="greeter#disposed" | scope=default
+service.notify | names=[greeter] | scope=default
+event.dispatch | mode=emit | name=internal-service
+fiber.state | fiber="greeter#disposed" | from="UNLOADING" | to="DISPOSED"
