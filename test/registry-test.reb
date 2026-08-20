@@ -93,17 +93,17 @@ t1-plugin: make object! [
 ]
 root1: make-root
 fb1: root1/registry/plugin t1-plugin make map! [msg: "hello"] none
-assert equal? 1 t1-calls "对象插件 apply 调用 1 次"
-assert equal? "hello" t1-config "config 透传"
-assert equal? fiber-state/ACTIVE fb1/state "插件 ACTIVE"
+assert equal? 1 t1-calls "object plugin apply called once"
+assert equal? "hello" t1-config "config passthrough"
+assert equal? fiber-state/ACTIVE fb1/state "plugin ACTIVE"
 assert equal? 1 root1/registry/size "registry size 1"
-assert root1/registry/has t1-plugin "registry.has 命中"
+assert root1/registry/has t1-plugin "registry.has hit"
 
 ; Register the same plugin again -> reuse the runtime
 root1/registry/plugin t1-plugin make map! [msg: "world"] none
-assert equal? 2 t1-calls "同插件再注册 apply 第 2 次"
-assert equal? "world" t1-config "第二次 config"
-assert equal? 1 root1/registry/size "同插件共享 runtime, size 仍 1"
+assert equal? 2 t1-calls "same plugin re-register apply 2nd time"
+assert equal? "world" t1-config "second config"
+assert equal? 1 root1/registry/size "same plugin shares runtime, size still 1"
 
 ; ------------------------------------------------------------
 ; Test 2: invalid plugin error
@@ -112,7 +112,7 @@ assert equal? 1 root1/registry/size "同插件共享 runtime, size 仍 1"
 root2: make-root
 bad1: make object! [name: "no-apply"]
 r2: root2/registry/plugin bad1 none none
-assert not none? find r2 "invalid plugin" "无 apply 方法报错"
+assert not none? find r2 "invalid plugin" "no apply method errors"
 
 ; ------------------------------------------------------------
 ; Test 3: registry API
@@ -129,7 +129,7 @@ assert equal? 2 length? root3/registry/values "values = 2"
 assert equal? 2 length? root3/registry/entries "entries = 2"
 cnt3: 0
 root3/registry/for-each func [k v] [cnt3: cnt3 + 1]
-assert equal? 2 cnt3 "forEach 遍历 2 次"
+assert equal? 2 cnt3 "forEach iterates 2 times"
 
 ; ------------------------------------------------------------
 ; Test 4: delete plugin -> fiber unload
@@ -146,11 +146,11 @@ p4: make object! [
 ]
 root4: make-root
 fb4: root4/registry/plugin p4 none none
-assert equal? 1 length? order4 "p4 启动"
+assert equal? 1 length? order4 "p4 started"
 root4/registry/delete p4
-assert equal? 0 root4/registry/size "delete 后 size 0"
-assert equal? 2 length? order4 "p4 停止"
-assert equal? 'p4-stop second order4 "p4 stop 标记"
+assert equal? 0 root4/registry/size "size 0 after delete"
+assert equal? 2 length? order4 "p4 stopped"
+assert equal? 'p4-stop second order4 "p4 stop marker"
 assert equal? fiber-state/DISPOSED fb4/state "fiber DISPOSED"
 
 ; ------------------------------------------------------------
@@ -170,7 +170,7 @@ print ["[dbg-t5] t5-args: " mold t5-args " len: " length? t5-args]
 print ["[dbg-t5] fb5 state: " fb5/state " store keys: " mold keys-of root5/reflect/store]
 print ["[dbg-t5] logger errors: " length? root5/logger/error-log]
 foreach e5 root5/logger/error-log [print ["  [dbg-t5] err id: " e5/id " near: " mold e5/near]]
-assert equal? reduce ["foo-val" none] t5-args "inject 注入 foo 服务并调用"
+assert equal? reduce ["foo-val" none] t5-args "inject injects foo service and calls"
 
 ; ------------------------------------------------------------
 ; Test 6: inactive context - operations after dispose should error
@@ -203,13 +203,13 @@ p6: make object! [
 ]
 root6: make-root
 fb6: root6/registry/plugin p6 none none
-assert equal? 1 length? order6 "p6 启动"
+assert equal? 1 length? order6 "p6 started"
 fb6/dispose/dispose
 print ["[dbg-test6] order6: " mold order6]
-assert equal? 4 length? order6 "dispose 全部执行"
-assert equal? 'ok pick order6 3 "inactive 后 plugin 报错"
-assert equal? 'ok2 pick order6 4 "inactive 后 effect 报错"
-assert equal? 0 t6-calls "inner 插件未启动"
+assert equal? 4 length? order6 "dispose all executed"
+assert equal? 'ok pick order6 3 "plugin errors after inactive"
+assert equal? 'ok2 pick order6 4 "effect errors after inactive"
+assert equal? 0 t6-calls "inner plugin not started"
 
 ; ------------------------------------------------------------
 ; Test 7: nested plugins - registry size lifecycle
@@ -246,19 +246,19 @@ nest1: make object! [
 root7: make-root
 root7/events/on 'evt 'evt-listen make map! [] none
 fb7: root7/registry/plugin nest1 none none
-assert equal? 3 root7/registry/size "嵌套 3 个 runtime"
+assert equal? 3 root7/registry/size "nested 3 runtimes"
 evt-calls: 0
 root7/events/emit 'evt [] none
-assert equal? 4 evt-calls "4 个 listener 触发"
+assert equal? 4 evt-calls "4 listeners triggered"
 ; Unload the root -> everything nested unloads as well
 fb7/dispose/dispose
-assert equal? 0 root7/registry/size "卸载后 registry size 0"
+assert equal? 0 root7/registry/size "registry size 0 after unload"
 evt-calls: 0
 root7/events/emit 'evt [] none
-assert equal? 1 evt-calls "只剩 root listener"
+assert equal? 1 evt-calls "only root listener remains"
 ; Repeated dispose is idempotent
 fb7/dispose/dispose
-assert equal? 0 root7/registry/size "重复 dispose size 仍 0"
+assert equal? 0 root7/registry/size "repeated dispose size still 0"
 
 ; ------------------------------------------------------------
 ; Test 8: root dispose - clear root disposables
@@ -274,17 +274,17 @@ p8: make object! [
 ]
 root8: make-root
 fb8: root8/registry/plugin p8 none none
-assert equal? 0 d8 "disposer 未调用"
+assert equal? 0 d8 "disposer not called"
 assert equal? 0 root8/fiber/uid "root uid = 0"
-assert equal? 1 fb8/uid "插件 uid = 1"
+assert equal? 1 fb8/uid "plugin uid = 1"
 assert equal? 1 root8/fiber/disposables/length "root disposables 1"
 root8/fiber/dispose/dispose
-assert equal? 0 root8/fiber/uid "root uid 仍 0"
-assert none? fb8/uid "插件 uid → none"
-assert equal? 1 d8 "disposer 调用 1 次"
-assert equal? 0 root8/fiber/disposables/length "root disposables 清空"
+assert equal? 0 root8/fiber/uid "root uid still 0"
+assert none? fb8/uid "plugin uid -> none"
+assert equal? 1 d8 "disposer called once"
+assert equal? 0 root8/fiber/disposables/length "root disposables cleared"
 root8/fiber/dispose/dispose
-assert equal? 1 d8 "重复 root dispose 幂等"
+assert equal? 1 d8 "repeated root dispose is idempotent"
 
 ; ------------------------------------------------------------
 ; Test 9: ctx name
@@ -301,7 +301,7 @@ p9: make object! [
 ]
 root9: make-root
 root9/registry/plugin p9 none none
-assert equal? "bar9" t9-name "插件 ctx name = bar9"
+assert equal? "bar9" t9-name "plugin ctx name = bar9"
 assert equal? "root" root9/fiber/name "root name"
 
 print rejoin ["^/==== registry-test: " passed " passed, " failed " failed ===="]

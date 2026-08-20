@@ -54,10 +54,10 @@ foo1: make object! [
 ]
 make-service root1 'foo1 foo1
 ; Note: the service value is the service object itself (upstream provide(name, self))
-assert same? foo1 root1/reflect/get 'foo1 true root1 "服务构造后自动注册 (reflect.get)"
-assert equal? 'foo1 foo1/name "服务 name 注入"
-assert equal? 42 select foo1 'value "服务字段保留"
-assert equal? root1 foo1/ctx "服务 ctx 注入"
+assert same? foo1 root1/reflect/get 'foo1 true root1 "service auto-registers after construction (reflect.get)"
+assert equal? 'foo1 foo1/name "service name injected"
+assert equal? 42 select foo1 'value "service fields preserved"
+assert equal? root1 foo1/ctx "service ctx injected"
 
 ; ------------------------------------------------------------
 ; Test 2: basic resolveConfig (base + head merge, no intercept)
@@ -68,8 +68,8 @@ root2/logger: make-stub-logger
 foo2: make object! [ctx: none name: none]
 make-service root2 'foo2 foo2
 cfg2: service-resolve-config foo2 make map! [a: 1] make map! [b: 2]
-assert equal? 1 select cfg2 'a "resolveConfig base 生效"
-assert equal? 2 select cfg2 'b "resolveConfig head 生效"
+assert equal? 1 select cfg2 'a "resolveConfig base applied"
+assert equal? 2 select cfg2 'b "resolveConfig head applied"
 
 ; ------------------------------------------------------------
 ; Test 3: resolveConfig across multiple intercept layers (core chained-shadowing behavior)
@@ -84,8 +84,8 @@ sub3: sub3/intercept 'foo3 make map! [b: 2]
 foo3: make object! [ctx: none name: none]
 make-service sub3 'foo3 foo3
 cfg3: service-resolve-config foo3 none none
-assert equal? 1 select cfg3 'a "链式 shadowing: 根层 a 保留"
-assert equal? 2 select cfg3 'b "链式 shadowing: 叶层 b 生效"
+assert equal? 1 select cfg3 'a "chained shadowing: root layer a preserved"
+assert equal? 2 select cfg3 'b "chained shadowing: leaf layer b applied"
 
 ; ------------------------------------------------------------
 ; Test 4: leaf layer overrides same key from root + base precedence
@@ -99,11 +99,11 @@ sub4: sub4/intercept 'foo4 make map! [level: 'leaf]
 foo4: make object! [ctx: none name: none]
 make-service sub4 'foo4 foo4
 cfg4: service-resolve-config foo4 none none
-assert equal? 'leaf select cfg4 'level "叶层配置覆盖根层"
+assert equal? 'leaf select cfg4 'level "leaf config overrides root"
 cfg4b: service-resolve-config foo4 make map! [level: 'base-arg] none
-assert equal? 'leaf select cfg4b 'level "链上配置覆盖 base 参数"
+assert equal? 'leaf select cfg4b 'level "chain config overrides base arg"
 cfg4c: service-resolve-config foo4 none make map! [level: 'head]
-assert equal? 'head select cfg4c 'level "head 参数优先级最高"
+assert equal? 'head select cfg4c 'level "head arg has highest priority"
 
 ; ------------------------------------------------------------
 ; Test 5: custom Config.merge merger
@@ -126,8 +126,8 @@ foo5: make object! [
 ]
 make-service root5 'foo5 foo5
 cfg5: service-resolve-config foo5 make map! [a: 1] make map! [b: 2]
-assert equal? 'merged select cfg5 'custom "Config.merge 自定义合并生效"
-assert equal? 2 first merge-log "merge 收到全部 config (base+head)"
+assert equal? 'merged select cfg5 'custom "Config.merge custom merge applied"
+assert equal? 2 first merge-log "merge receives all config (base+head)"
 
 ; ------------------------------------------------------------
 ; Test 6: multiple injects - services used as plugins, each init runs once after dependencies are satisfied
@@ -167,9 +167,9 @@ root6/logger: make-stub-logger
 root6/registry/plugin qux-t none root6
 root6/registry/plugin foo-t none root6
 root6/registry/plugin bar-t none root6
-assert equal? 3 length? order6 "multiple injects: 三个服务 init 各一次"
-assert equal? 'qux first order6 "依赖排序: 无依赖的 qux 最先"
-assert equal? 'bar last order6 "依赖最多的 bar 最后"
+assert equal? 3 length? order6 "multiple injects: each of 3 services init once"
+assert equal? 'qux first order6 "dependency order: qux with no deps first"
+assert equal? 'bar last order6 "bar with most deps last"
 
 print rejoin ["^/==== service-test: " passed " passed, " failed " failed ===="]
 if failed > 0 [quit 1]

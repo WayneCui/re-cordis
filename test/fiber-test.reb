@@ -156,19 +156,19 @@ dep-plugin: make object! [
 root1: make-root
 rt1: make-test-runtime "dep" dep-plugin
 fb1: make-plugin-fiber root1 make map! [] make map! [foo: none] rt1
-assert equal? 0 length? order "依赖未提供不启动"
-assert equal? fiber-state/PENDING fb1/state "未提供依赖 → PENDING"
+assert equal? 0 length? order "not started when dependency not provided"
+assert equal? fiber-state/PENDING fb1/state "no dependency -> PENDING"
 simulate-provide root1 'foo "v1"
-assert equal? 1 length? order "provide 后启动"
-assert equal? 'start first order "启动标记"
-assert equal? fiber-state/ACTIVE fb1/state "提供依赖 → ACTIVE"
+assert equal? 1 length? order "starts after provide"
+assert equal? 'start first order "start marker"
+assert equal? fiber-state/ACTIVE fb1/state "dependency provided -> ACTIVE"
 simulate-unprovide root1 'foo
-assert equal? 2 length? order "unprovide 后停止"
-assert equal? 'stop second order "停止标记"
-assert equal? fiber-state/PENDING fb1/state "依赖消失 → PENDING"
+assert equal? 2 length? order "stops after unprovide"
+assert equal? 'stop second order "stop marker"
+assert equal? fiber-state/PENDING fb1/state "dependency gone -> PENDING"
 simulate-provide root1 'foo "v2"
-assert equal? 3 length? order "重新 provide 再启动"
-assert equal? 'start pick order 3 "再启动标记"
+assert equal? 3 length? order "restarts after re-provide"
+assert equal? 'start pick order 3 "restart marker"
 
 ; ------------------------------------------------------------
 ; Test 2: plugin error -> FAILED, listener still works
@@ -190,11 +190,11 @@ rt2: make-test-runtime "err-plugin" err-plugin
 fb2: make-plugin-fiber root2 make map! [] make map! [] rt2
 rt2b: make-test-runtime "err-plugin" err-plugin
 fb2b: make-plugin-fiber root2 make map! [foo: true] make map! [] rt2b
-assert equal? fiber-state/FAILED fb2/state "plugin error → FAILED"
-assert equal? fiber-state/ACTIVE fb2b/state "正常 config → ACTIVE"
-assert equal? 1 length? root2/logger/error-log "logger.error 记录 1 次"
+assert equal? fiber-state/FAILED fb2/state "plugin error -> FAILED"
+assert equal? fiber-state/ACTIVE fb2b/state "normal config -> ACTIVE"
+assert equal? 1 length? root2/logger/error-log "logger.error recorded once"
 root2/events/emit 'evt [] none
-assert equal? 1 err-callback "ACTIVE 插件 listener 生效 (FAILED 的已清理)"
+assert equal? 1 err-callback "ACTIVE plugin listener works (FAILED cleaned up)"
 
 ; ------------------------------------------------------------
 ; Test 3: dispose error - disposer throws without crashing
@@ -211,11 +211,11 @@ de-plugin: make object! [
 root3: make-root
 rt3: make-test-runtime "de" de-plugin
 fb3: make-plugin-fiber root3 make map! [] make map! [] rt3
-assert equal? fiber-state/ACTIVE fb3/state "dispose-error 插件 ACTIVE"
-assert equal? 0 disp-count "disposer 未调用"
+assert equal? fiber-state/ACTIVE fb3/state "dispose-error plugin ACTIVE"
+assert equal? 0 disp-count "disposer not called"
 fb3/dispose/dispose
-assert equal? 1 disp-count "disposer 调用 1 次"
-assert equal? 1 length? root3/logger/error-log "disposer 错误被记录"
+assert equal? 1 disp-count "disposer called once"
+assert equal? 1 length? root3/logger/error-log "disposer error recorded"
 
 ; ------------------------------------------------------------
 ; Test 4: update config -> restart and rerun
@@ -235,10 +235,10 @@ uc-plugin: make object! [
 root4: make-root
 rt4: make-test-runtime "uc" uc-plugin
 fb4: make-plugin-fiber root4 make map! [msg: "hello"] make map! [] rt4
-assert equal? 1 uc-calls "update: 首次调用"
+assert equal? 1 uc-calls "update: first call"
 assert equal? "hello" first uc-configs "update: config hello"
 fb4/update make map! [msg: "world"] false
-assert equal? 2 uc-calls "update: 第二次调用"
+assert equal? 2 uc-calls "update: second call"
 assert equal? "world" second uc-configs "update: config world"
 
 ; ------------------------------------------------------------
@@ -254,10 +254,10 @@ rs-plugin: make object! [
 root5: make-root
 rt5: make-test-runtime "rs" rs-plugin
 fb5: make-plugin-fiber root5 make map! [] make map! [] rt5
-assert equal? 1 rc "restart: 首次调用"
+assert equal? 1 rc "restart: first call"
 fb5/restart
-assert equal? 2 rc "restart: 重跑"
-assert equal? fiber-state/ACTIVE fb5/state "restart 后 ACTIVE"
+assert equal? 2 rc "restart: rerun"
+assert equal? fiber-state/ACTIVE fb5/state "ACTIVE after restart"
 
 ; ------------------------------------------------------------
 ; Test 6: update while injected service is present - consumer reruns
@@ -278,12 +278,12 @@ simulate-provide root6 'provider 1
 rt6: make-test-runtime "consumer" consumer-plugin
 fb6: make-plugin-fiber root6 make map! [mode: "old"] make map! [provider: none] rt6
 print ["[dbg] consumer state: " fb6/state " applied: " mold applied " store: " mold fb6/store]
-assert equal? 1 length? applied "consumer 首次加载"
-assert equal? reduce [1 "old"] first applied "consumer 首次 [1 old]"
+assert equal? 1 length? applied "consumer first load"
+assert equal? reduce [1 "old"] first applied "consumer first [1 old]"
 fb6/update make map! [mode: "new"] false
-assert equal? 2 length? applied "consumer update 重跑"
+assert equal? 2 length? applied "consumer update rerun"
 assert equal? reduce [1 "new"] second applied "consumer update [1 new]"
-assert equal? fiber-state/ACTIVE fb6/state "consumer 仍 ACTIVE"
+assert equal? fiber-state/ACTIVE fb6/state "consumer still ACTIVE"
 
 ; ------------------------------------------------------------
 ; Test 7: dispose by plugin - getEffects + idempotence
@@ -303,13 +303,13 @@ root7: make-root
 rt7: make-test-runtime "ep" ep-plugin
 fb7: make-plugin-fiber root7 make map! [] make map! [] rt7
 ges: fb7/get-effects
-assert equal? 1 length? ges "getEffects 含 1 个"
+assert equal? 1 length? ges "getEffects has 1 item"
 assert equal? "test" ges/1/label "effect label = test"
-assert equal? 0 d1-count "disposer 未调用"
+assert equal? 0 d1-count "disposer not called"
 fb7/dispose/dispose
-assert equal? 1 d1-count "fiber dispose → disposer 调用"
+assert equal? 1 d1-count "fiber dispose -> disposer called"
 fb7/dispose/dispose
-assert equal? 1 d1-count "重复 dispose 幂等"
+assert equal? 1 d1-count "repeated dispose is idempotent"
 
 ; ------------------------------------------------------------
 ; Test 8: dispose manually — root effect
@@ -320,12 +320,12 @@ root8: make-root
 fx8: func [] [make object! [dispose: func [] [d2-count: d2-count + 1]]]
 w8: root8/fiber/effect :fx8 "anonymous"
 ges8: root8/fiber/get-effects
-assert equal? 1 length? ges8 "root effect 注册"
-assert equal? "anonymous" ges8/1/label "默认 label anonymous"
+assert equal? 1 length? ges8 "root effect registered"
+assert equal? "anonymous" ges8/1/label "default label anonymous"
 w8/dispose
-assert equal? 1 d2-count "手动 dispose 调用"
+assert equal? 1 d2-count "manual dispose called"
 w8/dispose
-assert equal? 1 d2-count "重复手动 dispose 幂等"
+assert equal? 1 d2-count "repeated manual dispose is idempotent"
 
 ; ------------------------------------------------------------
 ; Test 9: block effect - nesting + reverse cleanup [3 2 1]
@@ -347,13 +347,13 @@ fx9: func [] [
     ]
 ]
 w9: root9/fiber/effect :fx9 "anonymous"
-assert equal? 0 length? seq9 "清理前无副作用"
+assert equal? 0 length? seq9 "no side effects before cleanup"
 w9/dispose
-assert equal? [3 2 1] seq9 "块 effect 逆序清理 [3 2 1]"
+assert equal? [3 2 1] seq9 "block effect reverse cleanup [3 2 1]"
 ; Nested meta children
 ges9: root9/fiber/get-effects
-assert equal? 1 length? ges9 "嵌套后 1 个顶层 effect"
-assert equal? 1 length? ges9/1/children "顶层 effect 1 个 child"
+assert equal? 1 length? ges9 "1 top-level effect after nesting"
+assert equal? 1 length? ges9/1/children "top-level effect has 1 child"
 assert equal? "nested" ges9/1/children/1/label "child label = nested"
 
 ; ------------------------------------------------------------
@@ -367,8 +367,8 @@ fx10: func [] [
     append seq10 1
 ]
 r10: try [root10/fiber/effect :fx10 "err"]
-assert error? r10 "effect 抛错传播"
-assert equal? 0 length? seq10 "execute 抛错无部分收集 (副作用在报错后)"
+assert error? r10 "effect error propagates"
+assert equal? 0 length? seq10 "execute error: no partial collection (side effects after error)"
 
 ; ------------------------------------------------------------
 ; Test 11: nested plugin LIFO cleanup
@@ -397,14 +397,14 @@ outer-plugin11: make object! [
 root11: make-root
 rt11: make-test-runtime "outer" outer-plugin11
 fb11: make-plugin-fiber root11 make map! [] make map! [] rt11
-assert equal? 2 length? order11 "嵌套都启动"
+assert equal? 2 length? order11 "nested both started"
 root11/events/emit 'e11 [] none
-assert equal? 3 length? order11 "inner 事件处理"
-assert equal? 'inner-event pick order11 3 "inner 事件标记"
+assert equal? 3 length? order11 "inner event handled"
+assert equal? 'inner-event pick order11 3 "inner event marker"
 fb11/dispose/dispose
-assert equal? 5 length? order11 "全部清理"
-assert equal? 'outer-stop pick order11 4 "父 disposer 先于子卸载 (LIFO)"
-assert equal? 'inner-stop pick order11 5 "子插件后卸载"
+assert equal? 5 length? order11 "full cleanup"
+assert equal? 'outer-stop pick order11 4 "parent disposer before child unload (LIFO)"
+assert equal? 'inner-stop pick order11 5 "child plugin unloaded last"
 
 ; ------------------------------------------------------------
 ; Test 12: basic root fiber properties

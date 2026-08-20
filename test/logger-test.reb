@@ -40,16 +40,16 @@ root1/logger/info "one"
 root1/logger/info "two"
 root1/logger/info "three"
 b1: root1/logger/buffer
-assert equal? 2 length? b1 "buffer 保持有界 (size=2)"
-assert equal? "two" b1/1/args/1 "buffer 保留最新两条 (first)"
-assert equal? "three" b1/2/args/1 "buffer 保留最新两条 (second)"
+assert equal? 2 length? b1 "buffer stays bounded (size=2)"
+assert equal? "two" b1/1/args/1 "buffer keeps latest two (first)"
+assert equal? "three" b1/2/args/1 "buffer keeps latest two (second)"
 root1/logger/buffer-size: 1
 root1/logger/info "four"
-assert equal? 1 length? root1/logger/buffer "buffer 收缩到 size=1"
-assert equal? "four" root1/logger/buffer/1/args/1 "收缩后保留最新"
+assert equal? 1 length? root1/logger/buffer "buffer shrinks to size=1"
+assert equal? "four" root1/logger/buffer/1/args/1 "keeps latest after shrink"
 root1/logger/buffer-size: 0
 root1/logger/info "five"
-assert equal? 0 length? root1/logger/buffer "buffer-size 0 → 空"
+assert equal? 0 length? root1/logger/buffer "buffer-size 0 -> empty"
 
 ; ------------------------------------------------------------
 ; Test 2: exporter registration/unregistration - disposer isolation
@@ -64,11 +64,11 @@ exp2a: make object! [
 ]
 d2a: root2/logger/exporter exp2a
 root2/logger/info "hello"
-assert equal? 1 length? cap2 "exporter 收到消息"
-assert equal? "hello" first cap2 "消息内容正确"
+assert equal? 1 length? cap2 "exporter received message"
+assert equal? "hello" first cap2 "message content correct"
 d2a/dispose
 root2/logger/info "world"
-assert equal? 1 length? cap2 "注销后不再收到"
+assert equal? 1 length? cap2 "no more messages after unregister"
 
 ; The second exporter is unaffected by the first exporter's disposal
 cap2b: copy []
@@ -78,7 +78,7 @@ exp2b: make object! [
 ]
 d2b: root2/logger/exporter exp2b
 root2/logger/info "x"
-assert equal? 1 length? cap2b "独立 exporter 正常接收"
+assert equal? 1 length? cap2b "independent exporter receives normally"
 d2b/dispose
 
 ; ------------------------------------------------------------
@@ -94,7 +94,7 @@ root3/logger/exporter make object! [
     export: func [msg] [append names3 msg/name]
 ]
 root3/logger/debug "hello"
-assert equal? "root" first names3 "默认 name = fiber name (root)"
+assert equal? "root" first names3 "default name = fiber name (root)"
 
 ; ------------------------------------------------------------
 ; Test 4: explicit name parameter (upstream ctx.logger('custom'))
@@ -102,7 +102,7 @@ assert equal? "root" first names3 "默认 name = fiber name (root)"
 
 lg4: root3/logger/create 'custom
 lg4/debug "hello"
-assert equal? "custom" names3/2 "显式 name 生效"
+assert equal? "custom" names3/2 "explicit name applied"
 
 ; ------------------------------------------------------------
 ; Test 5: intercept name (upstream ctx.intercept('logger', {name}))
@@ -118,7 +118,7 @@ root5/logger/exporter make object! [
     export: func [msg] [append names5 msg/name]
 ]
 root5/logger/debug "hello"
-assert equal? "intercepted" first names5 "intercept name 生效"
+assert equal? "intercepted" first names5 "intercept name applied"
 
 ; ------------------------------------------------------------
 ; Test 6: level filtering - default INFO(2): error/warn/info pass, debug does not
@@ -135,9 +135,9 @@ root6/logger/error "e"
 root6/logger/warn "w"
 root6/logger/info "i"
 root6/logger/debug "d"
-assert equal? 3 length? types6 "默认 level INFO: 3 条通过"
-assert equal? 'error types6/1 "error 通过"
-assert not find types6 'debug "debug 被过滤"
+assert equal? 3 length? types6 "default level INFO: 3 pass"
+assert equal? 'error types6/1 "error passes"
+assert not find types6 'debug "debug filtered out"
 
 ; levels.default = 3 (DEBUG) -> everything passes
 root6b: make-context
@@ -148,7 +148,7 @@ root6b/logger/exporter make object! [
     export: func [msg] [append types6b msg/type]
 ]
 root6b/logger/debug "d"
-assert equal? 1 length? types6b "levels.default=3 时 debug 通过"
+assert equal? 1 length? types6b "debug passes when levels.default=3"
 
 ; levels can be configured per name: only allow foo's debug
 root6c: make-context
@@ -161,7 +161,7 @@ root6c/logger/exporter make object! [
 lg6c: root6c/logger/create 'foo
 lg6c/debug "d"
 root6c/logger/debug "x"   ; name=root, not configured -> default INFO -> filtered out
-assert equal? 1 length? types6c "per-name levels 配置生效"
+assert equal? 1 length? types6c "per-name levels config applied"
 
 print rejoin ["^/==== logger-test: " passed " passed, " failed " failed ===="]
 if failed > 0 [quit 1]

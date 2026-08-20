@@ -43,11 +43,11 @@ make-stub-logger: func [] [
 root1: make-context
 root1/logger: make-stub-logger
 assert equal? 0 root1/fiber/uid "root fiber uid 0"
-assert not none? root1/reflect "reflect 已构造"
-assert not none? root1/registry "registry 已构造"
-assert not none? root1/events "events 已构造"
-assert context-is root1 "Context.is 识别 root"
-assert not context-is 42 "Context.is 拒绝非 ctx"
+assert not none? root1/reflect "reflect constructed"
+assert not none? root1/registry "registry constructed"
+assert not none? root1/events "events constructed"
+assert context-is root1 "Context.is recognizes root"
+assert not context-is 42 "Context.is rejects non-ctx"
 
 ; ------------------------------------------------------------
 ; Test 2: isolation - root/ctx1/ctx2 each provide independently and remain invisible to one another
@@ -72,16 +72,16 @@ ctx2a: root2/isolate 'foo none
 ctx2a/registry/plugin iso-plugin make map! [] ctx2a
 ctx2b: root2/isolate 'foo none
 ctx2b/registry/plugin iso-plugin make map! [] ctx2b
-assert equal? 0 length? order2 "3 区插件均未启动 (foo 未提供)"
+assert equal? 0 length? order2 "3 zone plugins not started (foo not provided)"
 
 d2-0: root2/reflect/provide 'foo 100 none root2
-assert equal? 1 length? order2 "root provide → 仅 root 区插件启动"
+assert equal? 1 length? order2 "root provide -> only root zone plugin starts"
 rt2-0: first root2/registry/values
 fbs2-0: rt2-0/fibers/values
-assert equal? fiber-state/ACTIVE fbs2-0/1/state "root 区插件 ACTIVE"
+assert equal? fiber-state/ACTIVE fbs2-0/1/state "root zone plugin ACTIVE"
 
 d2-1: ctx2a/reflect/provide 'foo 200 none ctx2a
-assert equal? 2 length? order2 "ctx1 provide → 仅 ctx1 区插件启动"
+assert equal? 2 length? order2 "ctx1 provide -> only ctx1 zone plugin starts"
 ; Plugin state for the ctx1 zone (locate by isolate label, do not assume it is the last by traversal order)
 label2a: select ctx2a/isolate-map 'foo
 fbc2a: none
@@ -90,16 +90,16 @@ foreach rt2a ctx2a/registry/values [
         if equal? label2a select fb2a/ctx/isolate-map 'foo [fbc2a: fb2a]
     ]
 ]
-assert equal? fiber-state/ACTIVE fbc2a/state "ctx1 区插件 ACTIVE"
+assert equal? fiber-state/ACTIVE fbc2a/state "ctx1 zone plugin ACTIVE"
 
 d2-0/dispose
-assert equal? 3 length? order2 "root unprovide → root 区插件停止"
+assert equal? 3 length? order2 "root unprovide -> root zone plugin stops"
 rt2-0b: first root2/registry/values
 fbs2-0b: rt2-0b/fibers/values
-assert equal? fiber-state/PENDING fbs2-0b/1/state "root 区插件 PENDING"
+assert equal? fiber-state/PENDING fbs2-0b/1/state "root zone plugin PENDING"
 
 d2-2: ctx2b/reflect/provide 'foo 300 none ctx2b
-assert equal? 4 length? order2 "ctx2 provide → ctx2 区插件启动"
+assert equal? 4 length? order2 "ctx2 provide -> ctx2 zone plugin starts"
 
 ; ------------------------------------------------------------
 ; Test 3: shared label - ctx instances with the same label share the service
@@ -121,13 +121,13 @@ ctx3a: root3/isolate 'foo shared-label
 ctx3b: root3/isolate 'foo shared-label
 ctx3a/registry/plugin iso3-plugin make map! [] ctx3a
 ctx3b/registry/plugin iso3-plugin make map! [] ctx3b
-assert equal? 0 length? order3 "共享标签插件均未启动"
+assert equal? 0 length? order3 "shared-label plugins not started"
 
 d3: ctx3a/reflect/provide 'foo 200 none ctx3a
-assert equal? 2 length? order3 "同标签 provide → 两个插件都启动"
+assert equal? 2 length? order3 "same-label provide -> both plugins start"
 
 d3/dispose
-assert equal? 4 length? order3 "unprovide → 两个插件都停止"
+assert equal? 4 length? order3 "unprovide -> both plugins stop"
 
 ; ------------------------------------------------------------
 ; Test 4: extend - child ctx shares services and may override fields
@@ -137,10 +137,10 @@ root4: make-context
 root4/logger: make-stub-logger
 d4: root4/reflect/provide 'svc4 "v4" none root4
 sub4: root4/extend make map! [custom: 42]
-assert equal? "v4" sub4/reflect/get 'svc4 true sub4 "子 ctx 可读父服务"
-assert not none? select sub4/extra 'custom "extend 覆盖字段"
+assert equal? "v4" sub4/reflect/get 'svc4 true sub4 "child ctx can read parent service"
+assert not none? select sub4/extra 'custom "extend overrides field"
 d4/dispose
-assert none? sub4/reflect/get 'svc4 true sub4 "unprovide 后子 ctx 读不到"
+assert none? sub4/reflect/get 'svc4 true sub4 "child ctx cannot read after unprovide"
 
 ; ------------------------------------------------------------
 ; Test 5: intercept - declare an interception chain
@@ -154,12 +154,12 @@ int5: root5/intercept 'foo make map! [enabled: true]
 chain5: select int5 'intercept-chain
 cfg5: none
 foreach m5 chain5 [if select m5 'foo [cfg5: select m5 'foo]]
-assert not none? select cfg5 'enabled "intercept 声明生效"
+assert not none? select cfg5 'enabled "intercept declaration applied"
 sub5: int5/extend make map! []
 chain5b: select sub5 'intercept-chain
 cfg5b: none
 foreach m5b chain5b [if select m5b 'foo [cfg5b: select m5b 'foo]]
-assert not none? select cfg5b 'enabled "intercept 链继承"
+assert not none? select cfg5b 'enabled "intercept chain inherited"
 
 print rejoin ["^/==== context-test: " passed " passed, " failed " failed ===="]
 if failed > 0 [quit 1]
