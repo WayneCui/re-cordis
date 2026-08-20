@@ -10,7 +10,7 @@
 
 移植版保留了这种依赖关系，但将其运作机制扁平化了。这里没有返回任何 `Proxy`。`context-is` 仅仅是对 `ctx-marker` 的标记检查；`extend`、`isolate` 和 `intercept` 全部通过克隆显式映射表或区块（blocks）来实现，而不是依赖原型继承。这是该代码库中反复出现的一个主题：当宿主语言无法将行为暗藏在字段访问背后时，运行时数据结构就必须变得清晰可见、可被检查。
 
-因此，这个文件中最重要的一句话并不是什么算法技巧，而是 [`context.reb`](../../context.reb) 中的那行构建顺序注释：fiber、reflect、registry、events、logger。一旦你理解并认同了这一行，阅读整个代码库的方向也就找对了。
+因此，这个文件中最重要的一句话并不是什么算法技巧，而是 [`context.reb`](../../context.reb) 中的那行构建顺序注释：fiber、reflect、registry、logger、events。一旦你理解并认同了这一行，阅读整个代码库的方向也就找对了。
 
 ---
 
@@ -21,21 +21,58 @@ cd ch01-context-root/code
 bash run.sh
 ```
 
-预期输出：
+预期输出（末尾）：
 
 ```text
-PASS  root fiber uid 0
-PASS  reflect is constructed
-PASS  registry is constructed
-PASS  events is constructed
-==== context-test: 16 passed, 0 failed ====
+==== context-test: 22 passed, 0 failed ====
 ```
 
 ### 尝试一下
 
-1. 在 `../../context.reb` 中，交换 `reflect` 和 `fiber` 的创建顺序，然后重新运行实验，观察后续的假设是如何被破坏的。
-2. 注释掉重置 `ctx/fiber/disposables` 的那行代码，检查有多少构建时的包装器残留在根 Fiber 中。
-3. 在 `../../test/context-test.reb` 中，围绕 `intercept-chain` 的继承添加一个新的断言，这样你就能直接看到被克隆的链条。
+#### 1. 交换 `reflect` 和 `fiber` 的创建顺序
+
+在 [`context.reb`](../../context.reb) 的 `make-context` 中，把 `make-reflect-service` 挪到 `make-fiber-root` 之前，然后重新运行 `bash run.sh`。
+
+**预期：测试仍然全部通过。** 这不是文档写错了，而是实验本身在教你区分两种依赖：
+
+- **构造期依赖**：服务在 `make-*-service` 执行期间就需要 `ctx/fiber`（例如 `logger` 通过 `reflect/provide` 自注册，`events` 通过 `fiber/effect` 注册内部监听器）。
+- **运行期依赖**：`make-reflect-service` 只分配方法对象，直到调用 `provide`/`set` 才访问 `ctx/fiber`；而测试都在 `make-context` 完成之后才开始 `provide`。
+
+因此，仅交换 `reflect` 与 `fiber` 是「弱违反」——`make-context` 返回时两者都已就绪，行为测试看不出差异。
+
+要看到构造期假设真正被破坏，把 `logger` 或 `events` 挪到 `ctx/fiber: rf` **之前**（且不要提前赋值 fiber），再运行 `bash run.sh`：
+
+```text
+** Script error: cannot access fiber in path act-ctx/fiber/effect
+** Where: provide make-service make-logger-service make-context
+```
+
+#### 2. 注释掉 `disposables` 重置
+
+注释掉 `make-context` 末尾的 `ctx/fiber/disposables: make-disposable-list`，然后运行：
+
+```bash
+bash probe.sh
+```
+
+**预期：`context-test` 仍然 22 passed**（测试不检查 disposables），但 probe 输出会变化：
+
+| 配置 | `disposables length` | effect labels |
+|------|---------------------|---------------|
+| 正常（有 reset） | 0 | （无） |
+| 注释掉 reset | 2 | `ctx.on(internal-listener)`、`ctx.on(internal-update)` |
+
+这 2 个包装器来自 [`events.reb`](../../events.reb) 构造时的两次 `svc/on`，每次注册都会走 `fiber/effect`。reset 行的作用就是丢弃这些一次性构建包装器，与 TypeScript 里 `this.fiber._disposables.clear()` 对应。
+
+#### 3. 观察 `intercept-chain` 继承
+
+[`test/context-test.reb`](../../test/context-test.reb) 的 Test 5 已包含相关断言（`intercept declaration applied`、`intercept chain inherited`）。运行 `bash run.sh` 确认通过后，可在 Test 5 临时加一行调试输出观察链条克隆：
+
+```rebol
+print mold select int5 'intercept-chain
+```
+
+`extend` 后子 ctx 应继承同一份 `[leaf ... root]` 链，lookup 时从头顺序匹配，第一个命中的 map 生效。
 
 ### 源码对比
 

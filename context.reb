@@ -5,8 +5,8 @@ REBOL []
 ; Upstream: ref/core/context.ts (78 lines)
 ;
 ; Semantic mapping:
-;   - Context construction order (ROADMAP §3): fiber -> reflect -> registry -> events
-;     -> logger -> replace root fiber disposables (matching _disposables.clear())
+;   - Context construction order (ROADMAP §3): fiber -> reflect -> registry -> logger -> events
+;     -> replace root fiber disposables (matching _disposables.clear())
 ;   - Proxy handler -> explicit methods (reflect/registry/events methods all receive act-ctx)
 ;   - extend(meta) -> make-child-ctx (copy/override fields)
 ;   - isolate(name, label) -> new ctx + isolate-map (chained map, ROADMAP §4.6)
@@ -95,7 +95,7 @@ make-child-ctx: func [root-ctx [object! none!] props [map!] /local new root-ref]
 
 ; ------------------------------------------------------------
 ; Root Context factory
-; Construction order: fiber -> reflect -> registry -> events -> logger
+; Construction order: fiber -> reflect -> registry -> logger -> events
 ; Replace root fiber disposables after construction (drop the internal handler wrapper)
 ; ------------------------------------------------------------
 
