@@ -41,18 +41,26 @@ Context root
 | 05 | `registry-plugins` | 注册表（registry）是如何将一个插件声明转化为一个运行时外加一个活跃的 Fiber 的？ | 否 |
 | 06 | `isolation-and-config` | 为什么隔离与拦截被实现为了显式的调用链，而不是魔法般的继承？ | 是 |
 | 07 | `service-and-logger` | 在剥离了大部分 JS 元编程之后，`Service` 和 `Logger` 还剩下什么？ | 是 |
-| 08 | `greeter-app` | 整个移植版在一个可运行的小应用中，还能保持 Cordis 的味道吗？ | 否 |
+| 08 | `greeter-app` | 在一个可运行的小型应用中，整个移植版还能让人感觉像 Cordis 吗？ | 否 |
+| 09 | `deterministic-scheduler` | 在没有原生事件循环的情况下，我们如何模拟异步锁？ | 是 |
+| 10 | `failure-recovery` | 如果 Fiber 异步失败，它将如何清理并恢复？ | 是 |
+| 11 | `reentrant-convergence` | 当插件已经在加载时依赖项发生动荡，会发生什么？ | 是 |
+| 12 | `effect-tree` | 我们如何将 Fiber 的嵌套挂载和清理归属可视化？ | 否 |
 
 ## 目录
 
-- [第01章 为什么根上下文按顺序构建](./ch01-context-root/chapter.md)
-- [第02章 没有可变参数的事件](./ch02-events-hooks/chapter.md)
-- [第03章 作为租约的 Fiber](./ch03-fiber-epochs/chapter.md)
-- [第04章 没有 Proxy 的 Reflect](./ch04-reflect-without-proxy/chapter.md)
-- [第05章 注册表将插件转化为运行时](./ch05-registry-plugins/chapter.md)
-- [第06章 隔离与拦截链](./ch06-isolation-and-config/chapter.md)
-- [第07章 重写后的 Service 与 Logger](./ch07-service-and-logger/chapter.md)
-- [第08章 检验移植版的一个小应用](./ch08-greeter-app/chapter.md)
+- [第 01 章 为什么根上下文按顺序构建](../ch01-context-root-zh-CN/translation.md)
+- [第 02 章 没有可变参数的事件](../ch02-events-hooks-zh-CN/translation.md)
+- [第 03 章 作为租约的 Fiber](../ch03-fiber-epochs-zh-CN/translation.md)
+- [第 04 章 没有 Proxy 的反射](../ch04-reflect-without-proxy-zh-CN/translation.md)
+- [第 05 章 注册表将插件转化为运行时](../ch05-registry-plugins-zh-CN/translation.md)
+- [第 06 章 隔离与拦截链](../ch06-isolation-and-config-zh-CN/translation.md)
+- [第 07 章 重写后的服务与日志器](../ch07-service-and-logger-zh-CN/translation.md)
+- [第 08 章 演练移植版的小型应用](../ch08-greeter-app-zh-CN/translation.md)
+- [第 09 章 确定性异步模拟](../ch09-deterministic-scheduler-zh-CN/translation.md)
+- [第 10 章 异步失败与恢复](../ch10-failure-recovery-zh-CN/translation.md)
+- [第 11 章 重入纪元收敛](../ch11-reentrant-convergence-zh-CN/translation.md)
+- [第 12 章 副作用树可视化](../ch12-effect-tree-zh-CN/translation.md)
 
 ## 如何阅读
 
@@ -64,7 +72,7 @@ Context root
 
 ```bash
 ./verify-all.sh
-# expect: 8 chapter labs OK
+# 期望：12 个章节实验全部 OK
 ```
 
 快速查找表位于 [appendix/quick-reference.md](./appendix/quick-reference.md)。

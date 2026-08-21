@@ -42,6 +42,10 @@ The book therefore answers reader questions rather than offering a dictionary of
 | 06 | `isolation-and-config` | Why are isolation and intercept implemented as explicit chains instead of magic inheritance? | yes |
 | 07 | `service-and-logger` | What remains of `Service` and `Logger` after most JS metaprogramming is stripped away? | yes |
 | 08 | `greeter-app` | Can the whole port still feel like Cordis in a small runnable app? | no |
+| 09 | `deterministic-scheduler` | How do we simulate async locks without a native event loop? | yes |
+| 10 | `failure-recovery` | How does a fiber clean up and recover if it fails asynchronously? | yes |
+| 11 | `reentrant-convergence` | What happens when dependencies churn while a plugin is already loading? | yes |
+| 12 | `effect-tree` | How can we visualize the nested mounting and disposal ownership of a fiber? | no |
 
 ## Contents
 
@@ -53,6 +57,10 @@ The book therefore answers reader questions rather than offering a dictionary of
 - [Chapter 06 Isolation and Intercept Chains](./ch06-isolation-and-config/chapter.md)
 - [Chapter 07 Service and Logger After the Rewrite](./ch07-service-and-logger/chapter.md)
 - [Chapter 08 A Small App That Exercises the Port](./ch08-greeter-app/chapter.md)
+- [Chapter 09 Deterministic Async Simulation](./ch09-deterministic-scheduler/chapter.md)
+- [Chapter 10 Async Failure and Recovery](./ch10-failure-recovery/chapter.md)
+- [Chapter 11 Reentrant Epoch Convergence](./ch11-reentrant-convergence/chapter.md)
+- [Chapter 12 Effect Tree Observability](./ch12-effect-tree/chapter.md)
 
 ## How to Read
 
@@ -64,7 +72,7 @@ If you mostly care about application code, read Chapters 01, 05, and 08 in order
 
 ```bash
 ./verify-all.sh
-# expect: 8 chapter labs OK
+# expect: 12 chapter labs OK
 ```
 
 Lookup tables live in [appendix/quick-reference.md](./appendix/quick-reference.md).

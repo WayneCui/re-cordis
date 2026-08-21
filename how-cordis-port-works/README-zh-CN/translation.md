@@ -11,4 +11,17 @@ cd how-cordis-port-works/ch01-context-root/code && bash run.sh
 cd how-cordis-port-works && ./verify-all.sh
 ```
 
-连贯的前言与章节导读位于 [HOW_CORDIS_PORT_WORKS.md](./HOW_CORDIS_PORT_WORKS.md)。
+连贯的前言与章节导读位于 [HOW_CORDIS_PORT_WORKS.md](../HOW_CORDIS_PORT_WORKS-zh-CN/translation.md)。
+
+- [第 01 章 为什么根上下文按顺序构建](../HOW_CORDIS_PORT_WORKS-zh-CN/translation.md#目录)
+- [第 02 章 没有可变参数的事件](../HOW_CORDIS_PORT_WORKS-zh-CN/translation.md#目录)
+- [第 03 章 作为租约的 Fiber](../HOW_CORDIS_PORT_WORKS-zh-CN/translation.md#目录)
+- [第 04 章 没有 Proxy 的反射](../HOW_CORDIS_PORT_WORKS-zh-CN/translation.md#目录)
+- [第 05 章 注册表将插件转化为运行时](../HOW_CORDIS_PORT_WORKS-zh-CN/translation.md#目录)
+- [第 06 章 隔离与拦截链](../HOW_CORDIS_PORT_WORKS-zh-CN/translation.md#目录)
+- [第 07 章 重写后的服务与日志器](../HOW_CORDIS_PORT_WORKS-zh-CN/translation.md#目录)
+- [第 08 章 演练移植版的小型应用](../HOW_CORDIS_PORT_WORKS-zh-CN/translation.md#目录)
+- [第 09 章 确定性异步模拟](../HOW_CORDIS_PORT_WORKS-zh-CN/translation.md#目录)
+- [第 10 章 异步失败与恢复](../HOW_CORDIS_PORT_WORKS-zh-CN/translation.md#目录)
+- [第 11 章 重入纪元收敛](../HOW_CORDIS_PORT_WORKS-zh-CN/translation.md#目录)
+- [第 12 章 副作用树可视化](../HOW_CORDIS_PORT_WORKS-zh-CN/translation.md#目录)
