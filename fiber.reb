@@ -114,6 +114,7 @@ fiber-state-name: func [state [integer! none!]] [
 
 run-disposer: func [disposer [object!]] [
     do reduce [get in disposer 'dispose]
+    none
 ]
 
 fiber-has-disposable?: func [fb [object!] candidate [object!] /local d] [

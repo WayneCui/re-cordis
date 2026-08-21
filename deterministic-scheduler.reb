@@ -21,6 +21,7 @@ scheduled-task?: func [value] [
 
 run-scheduled-task: func [task [object!]] [
     do reduce [get in task 'run]
+    none
 ]
 
 make-scheduled-value: func [delay [integer!] value /local task] [
