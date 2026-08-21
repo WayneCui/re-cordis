@@ -486,21 +486,34 @@ fiber-effect: func [fb [object!] execute [function!] label [string!] /local loca
         owner-fiber: fb
         dispose-reason: none
         ; Gotcha: in make object! [label: label], the RHS is shadowed by the new field -> assign after creation
-        meta: make object! [label: none  children: copy []]
-        dispose: func [] [
+        meta: make object! [
+            label: none
+            owner: none
+            disposed: false
+            dispose-reason: none
+            children: copy []
+        ]
+        dispose: func [/local reason] [
+            reason: any [dispose-reason  "manual"]
             if done [exit]
             runtime-record owner-fiber/ctx 'effect.dispose reduce [
                 'fiber (fiber-tag owner-fiber)
                 'label meta/label
-                'reason any [dispose-reason  "manual"]
+                'reason reason
             ]
+            meta/disposed: true
+            meta/dispose-reason: reason
             dispose-reason: none
             done: true
-            foreach d reverse items [d/dispose]
+            foreach d reverse items [
+                if in d 'dispose-reason [d/dispose-reason: reason]
+                d/dispose
+            ]
             none
         ]
     ]
     wrapper/meta/label: label
+    wrapper/meta/owner: fiber-tag fb
     wrapper/meta/children: children-list
     fb/disposables/push wrapper
     runtime-record fb/ctx 'effect.register reduce [
