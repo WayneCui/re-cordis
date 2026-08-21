@@ -1,0 +1,52 @@
+# snapshots
+t0-provider=LOADING t0-consumer=PENDING
+t1000-provider=ACTIVE t1000-consumer=ACTIVE applied=[[1 "old"]]
+after-provider-update=LOADING consumer=PENDING
+after-consumer-update=PENDING applied=[[1 "old"]]
+t2000-provider=ACTIVE t2000-consumer=ACTIVE applied=[[1 "old"] [2 "new"]]
+
+# trace
+fiber.create | fiber="async-provider#1" | runtime="async-provider"
+fiber.epoch | fiber="async-provider#1" | from="__INACTIVE__" | to=":1:1"
+fiber.state | fiber="async-provider#1" | from="PENDING" | to="LOADING"
+task.schedule | fiber="async-provider#1" | phase="reload" | delay=1000
+effect.register | fiber="root#0" | label="ctx.plugin()" | children=0
+fiber.create | fiber="consumer#2" | runtime="consumer"
+effect.register | fiber="root#0" | label="ctx.plugin()" | children=0
+task.step | delta=1000 | from=0 | to=1000
+task.run | fiber="async-provider#1" | phase="reload" | delay=1000
+service.provide | name=provider | fiber="async-provider#1" | scope=default
+effect.register | fiber="async-provider#1" | label="ctx.provide(provider)" | children=0
+fiber.state | fiber="async-provider#1" | from="LOADING" | to="ACTIVE"
+service.notify | names=[provider] | scope=default
+fiber.epoch | fiber="consumer#2" | from="__INACTIVE__" | to=":1:1"
+fiber.state | fiber="consumer#2" | from="PENDING" | to="LOADING"
+fiber.state | fiber="consumer#2" | from="LOADING" | to="ACTIVE"
+event.dispatch | mode=emit | name=internal-service
+fiber.epoch | fiber="async-provider#1" | from=":1:1" | to="__INACTIVE__"
+fiber.state | fiber="async-provider#1" | from="ACTIVE" | to="UNLOADING"
+service.notify | names=[provider] | scope=default
+fiber.epoch | fiber="consumer#2" | from=":1:1" | to="__INACTIVE__"
+fiber.state | fiber="consumer#2" | from="ACTIVE" | to="UNLOADING"
+fiber.unload-finalize | fiber="consumer#2" | epoch="__INACTIVE__"
+fiber.state | fiber="consumer#2" | from="UNLOADING" | to="PENDING"
+event.dispatch | mode=emit | name=internal-service
+effect.dispose | fiber="async-provider#1" | label="ctx.provide(provider)" | reason="unload"
+service.unprovide | name=provider | fiber="async-provider#1" | scope=default
+service.notify | names=[provider] | scope=default
+event.dispatch | mode=emit | name=internal-service
+fiber.unload-finalize | fiber="async-provider#1" | epoch="__INACTIVE__"
+fiber.state | fiber="async-provider#1" | from="UNLOADING" | to="PENDING"
+fiber.epoch | fiber="async-provider#1" | from="__INACTIVE__" | to=":1:1"
+fiber.state | fiber="async-provider#1" | from="PENDING" | to="LOADING"
+task.schedule | fiber="async-provider#1" | phase="reload" | delay=1000
+task.step | delta=1000 | from=1000 | to=2000
+task.run | fiber="async-provider#1" | phase="reload" | delay=1000
+service.provide | name=provider | fiber="async-provider#1" | scope=default
+effect.register | fiber="async-provider#1" | label="ctx.provide(provider)" | children=0
+fiber.state | fiber="async-provider#1" | from="LOADING" | to="ACTIVE"
+service.notify | names=[provider] | scope=default
+fiber.epoch | fiber="consumer#2" | from="__INACTIVE__" | to=":1:1"
+fiber.state | fiber="consumer#2" | from="PENDING" | to="LOADING"
+fiber.state | fiber="consumer#2" | from="LOADING" | to="ACTIVE"
+event.dispatch | mode=emit | name=internal-service

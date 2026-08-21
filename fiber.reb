@@ -112,6 +112,17 @@ fiber-state-name: func [state [integer! none!]] [
     ]
 ]
 
+run-disposer: func [disposer [object!]] [
+    do reduce [get in disposer 'dispose]
+]
+
+fiber-has-disposable?: func [fb [object!] candidate [object!] /local d] [
+    foreach d fb/disposables/values [
+        if same? d candidate [return true]
+    ]
+    false
+]
+
 fiber-tag: func [fb [object! none!] /local name uid] [
     unless fb [return "none"]
     name: either all [fb/runtime  fb/runtime/name] [fb/runtime/name]["root"]
@@ -271,10 +282,12 @@ fiber-set-epoch: func [fb [object!] epoch-str [string!] /local old] [
 
 fiber-collect-reload-result: func [fb [object!] result /local d] [
     either object? result [
-        fb/disposables/push result
+        unless fiber-has-disposable? fb result [fb/disposables/push result]
     ][
         if block? result [
-            foreach d result [fb/disposables/push d]
+            foreach d result [
+                unless fiber-has-disposable? fb d [fb/disposables/push d]
+            ]
         ]
     ]
 ]
@@ -422,7 +435,7 @@ fiber-unload-step: func [fb [object!] ds [block!] /local d r label] [
     remove ds
     if in d 'dispose-reason [d/dispose-reason: "unload"]
     label: either all [select d 'meta  select d/meta 'label] [d/meta/label][none]
-    r: try [d/dispose]
+    r: try [run-disposer d]
     if error? r [
         fb/ctx/logger/error r
         return fiber-unload-step fb ds
@@ -459,7 +472,7 @@ fiber-effect: func [fb [object!] execute [function!] label [string!] /local loca
     result: try [execute]
     either error? result [
         ; Clean up already-collected items in reverse order, then propagate the error (upstream: dispose() + throw)
-        foreach d reverse local-list [d/dispose]
+        foreach d reverse local-list [run-disposer d]
         return result
     ][
         either object? result [
@@ -495,7 +508,7 @@ fiber-effect: func [fb [object!] execute [function!] label [string!] /local loca
         ]
         dispose: func [/local reason] [
             reason: any [dispose-reason  "manual"]
-            if done [exit]
+            if done [return none]
             runtime-record owner-fiber/ctx 'effect.dispose reduce [
                 'fiber (fiber-tag owner-fiber)
                 'label meta/label
@@ -507,7 +520,7 @@ fiber-effect: func [fb [object!] execute [function!] label [string!] /local loca
             done: true
             foreach d reverse items [
                 if in d 'dispose-reason [d/dispose-reason: reason]
-                d/dispose
+                run-disposer d
             ]
             none
         ]
