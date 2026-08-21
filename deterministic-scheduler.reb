@@ -19,6 +19,10 @@ scheduled-task?: func [value] [
     ]
 ]
 
+run-scheduled-task: func [task [object!]] [
+    do reduce [get in task 'run]
+]
+
 make-scheduled-value: func [delay [integer!] value /local task] [
     task: make object! [
         task-kind: 'scheduled
@@ -81,7 +85,7 @@ make-deterministic-scheduler: func [/local scheduler] [
                 scheduler-remove-item queue item
                 now: item/due
                 item/done: true
-                result: try [item/task-ref/run]
+                result: try [run-scheduled-task item/task-ref]
                 if error? result [print result]
             ]
             now: target

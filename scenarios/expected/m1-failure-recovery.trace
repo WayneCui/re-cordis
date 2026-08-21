@@ -1,0 +1,31 @@
+# snapshots
+t0=LOADING
+t1000=FAILED
+hits-after-fail=0
+after-update=LOADING
+t2000=ACTIVE
+hits-after-recovery=1
+
+# trace
+fiber.create | fiber="async-failing#1" | runtime="async-failing"
+fiber.epoch | fiber="async-failing#1" | from="__INACTIVE__" | to=""
+fiber.state | fiber="async-failing#1" | from="PENDING" | to="LOADING"
+event.dispatch | mode=bail | name=internal-listener
+effect.register | fiber="async-failing#1" | label="ctx.on(ping)" | children=0
+task.schedule | fiber="async-failing#1" | phase="reload" | delay=1000
+effect.register | fiber="root#0" | label="ctx.plugin()" | children=0
+task.step | delta=1000 | from=0 | to=1000
+task.run | fiber="async-failing#1" | phase="reload" | delay=1000
+fiber.state | fiber="async-failing#1" | from="LOADING" | to="FAILED"
+effect.dispose | fiber="async-failing#1" | label="ctx.on(ping)" | reason="unload"
+fiber.unload-finalize | fiber="async-failing#1" | epoch="__INACTIVE__"
+event.dispatch | mode=emit | name=ping
+fiber.epoch | fiber="async-failing#1" | from="__INACTIVE__" | to=""
+fiber.state | fiber="async-failing#1" | from="FAILED" | to="LOADING"
+event.dispatch | mode=bail | name=internal-listener
+effect.register | fiber="async-failing#1" | label="ctx.on(ping)" | children=0
+task.schedule | fiber="async-failing#1" | phase="reload" | delay=1000
+task.step | delta=1000 | from=1000 | to=2000
+task.run | fiber="async-failing#1" | phase="reload" | delay=1000
+fiber.state | fiber="async-failing#1" | from="LOADING" | to="ACTIVE"
+event.dispatch | mode=emit | name=ping

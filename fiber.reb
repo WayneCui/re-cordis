@@ -305,7 +305,7 @@ fiber-complete-reload: func [fb [object!] old-epoch [string!] result /local pend
 
 fiber-schedule-reload: func [fb [object!] old-epoch [string!] task [object!] /local scheduler wrapper] [
     scheduler: runtime-scheduler-of fb/ctx
-    unless scheduler [return fiber-complete-reload fb old-epoch try [task/run]]
+    unless scheduler [return fiber-complete-reload fb old-epoch try [run-scheduled-task task]]
     runtime-record fb/ctx 'task.schedule reduce [
         'fiber (fiber-tag fb)
         'phase "reload"
@@ -321,7 +321,7 @@ fiber-schedule-reload: func [fb [object!] old-epoch [string!] task [object!] /lo
                 'phase "reload"
                 'delay task-ref/delay
             ]
-            result: try [task-ref/run]
+            result: try [run-scheduled-task task-ref]
             pending: fiber-complete-reload target-fb old-epoch-ref result
             if not pending [fiber-release-inertia target-fb]
             none
@@ -372,7 +372,7 @@ fiber-finalize-unload: func [fb [object!] /local pending] [
 fiber-schedule-unload: func [fb [object!] remaining [block!] task [object!] label [string! none!] /local scheduler wrapper r pending] [
     scheduler: runtime-scheduler-of fb/ctx
     unless scheduler [
-        r: try [task/run]
+        r: try [run-scheduled-task task]
         if error? r [
             fb/ctx/logger/error r
             return fiber-unload-step fb remaining
@@ -397,7 +397,7 @@ fiber-schedule-unload: func [fb [object!] remaining [block!] task [object!] labe
                 'delay task-ref/delay
                 'label label-ref
             ]
-            result: try [task-ref/run]
+            result: try [run-scheduled-task task-ref]
             either error? result [
                 target-fb/ctx/logger/error result
                 pending: fiber-unload-step target-fb rest-ref
@@ -575,7 +575,7 @@ fiber-restart: func [fb [object!] /local r] [
 
 fiber-update: func [fb [object!] config no-save [logic!] /local final-w] [
     fiber-assert-active fb
-    config: resolve-config fb/runtime config
+    config: (resolve-config fb/runtime config)
     final-w: make object! [
         target-fb: fb
         call: func [args [block!] this-arg [object! none!]] [
