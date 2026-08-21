@@ -26,6 +26,7 @@ REBOL []
 do %./utils.reb
 do %./events.reb
 do %./runtime-scope.reb
+do %./deterministic-scheduler.reb
 
 ; ------------------------------------------------------------
 ; Constants
@@ -60,6 +61,7 @@ fiber-type: make object! [
     hooks: make map! []     ; _hooks: word → DisposableList (internal-update)
     error: none
     inertia: none           ; synchronous version: logic! true = loading/unloading
+    inertia-target: none
     dispose: none           ; unload entry point (wrapper object, root = restart)
 
     ; ---- Method shell (delegates to standalone functions, self-contained) ----
@@ -115,6 +117,15 @@ fiber-tag: func [fb [object! none!] /local name uid] [
     name: either all [fb/runtime  fb/runtime/name] [fb/runtime/name]["root"]
     uid: either none? fb/uid ["disposed"][to-string fb/uid]
     rejoin [name "#" uid]
+]
+
+fiber-release-inertia: func [fb [object!] /local target] [
+    target: fb/inertia-target
+    fb/inertia: none
+    fb/inertia-target: none
+    unless equal? fb/epoch target [
+        fiber-set-epoch fb fb/epoch
+    ]
 ]
 
 ; ------------------------------------------------------------
@@ -238,23 +249,19 @@ fiber-set-epoch: func [fb [object!] epoch-str [string!] /local old] [
     ]
     if fb/inertia [exit]
     fb/inertia: true
+    fb/inertia-target: epoch-str
     either equal? epoch-str inactive-epoch [
         fiber-update-state fb fiber-state/UNLOADING
-        fiber-unload fb
+        if not fiber-unload fb [fiber-release-inertia fb]
     ][
         either equal? old inactive-epoch [
             fiber-update-state fb fiber-state/LOADING
-            fiber-reload fb
+            if not fiber-reload fb [fiber-release-inertia fb]
         ][
             ; non->non: unload first (internal re-entry checks will continue into reload)
             fiber-update-state fb fiber-state/UNLOADING
-            fiber-unload fb
+            if not fiber-unload fb [fiber-release-inertia fb]
         ]
-    ]
-    fb/inertia: none
-    ; The epoch may change due to side effects during execution -> re-entry check
-    unless equal? fb/epoch epoch-str [
-        fiber-set-epoch fb fb/epoch
     ]
 ]
 
@@ -262,59 +269,174 @@ fiber-set-epoch: func [fb [object!] epoch-str [string!] /local old] [
 ; _reload / _unload
 ; ------------------------------------------------------------
 
-fiber-reload: func [fb [object!] /local old-epoch result d] [
-    old-epoch: fb/epoch
-    ; After unload store becomes none, rebuild it before snapshotting
-    either fb/store [fb/store: copy fb/store][fb/store: make map! []]
-    result: try [fb/runtime/callback/apply fb/ctx fb/config]
+fiber-collect-reload-result: func [fb [object!] result /local d] [
+    either object? result [
+        fb/disposables/push result
+    ][
+        if block? result [
+            foreach d result [fb/disposables/push d]
+        ]
+    ]
+]
+
+fiber-complete-reload: func [fb [object!] old-epoch [string!] result /local pending] [
     either error? result [
         fb/ctx/logger/error result
         fb/error: result
         fb/epoch: inactive-epoch
         fiber-update-state fb fiber-state/FAILED
-        ; Match upstream: if reload fails -> unload to clean up disposables
-        fiber-unload fb
+        pending: fiber-unload fb
     ][
-        either object? result [
-            fb/disposables/push result
+        either scheduled-task? result [
+            pending: fiber-schedule-reload fb old-epoch result
         ][
-            if block? result [
-                foreach d result [fb/disposables/push d]
+            fiber-collect-reload-result fb result
+            either equal? fb/epoch old-epoch [
+                fiber-update-state fb fiber-state/ACTIVE
+                pending: false
+            ][
+                fiber-update-state fb fiber-state/UNLOADING
+                pending: fiber-unload fb
             ]
         ]
-        either equal? fb/epoch old-epoch [
-            fiber-update-state fb fiber-state/ACTIVE
-        ][
-            ; The epoch changed during execution -> continue unloading
-            fiber-unload fb
-        ]
     ]
+    pending
 ]
 
-fiber-unload: func [fb [object!] /local ds d r] [
-    ds: fb/disposables/clear
-    foreach d ds [
-        if in d 'dispose-reason [d/dispose-reason: "unload"]
-        ; Append none at the end so try still yields none rather than unset when dispose has no return value
-        r: try [d/dispose  none]
-        if error? r [fb/ctx/logger/error r]
+fiber-schedule-reload: func [fb [object!] old-epoch [string!] task [object!] /local scheduler wrapper] [
+    scheduler: runtime-scheduler-of fb/ctx
+    unless scheduler [return fiber-complete-reload fb old-epoch try [task/run]]
+    runtime-record fb/ctx 'task.schedule reduce [
+        'fiber (fiber-tag fb)
+        'phase "reload"
+        'delay task/delay
+    ]
+    wrapper: make object! [
+        target-fb: none
+        old-epoch-ref: none
+        task-ref: none
+        run: func [/local result pending] [
+            runtime-record target-fb/ctx 'task.run reduce [
+                'fiber (fiber-tag target-fb)
+                'phase "reload"
+                'delay task-ref/delay
+            ]
+            result: try [task-ref/run]
+            pending: fiber-complete-reload target-fb old-epoch-ref result
+            if not pending [fiber-release-inertia target-fb]
+            none
+        ]
+    ]
+    wrapper/target-fb: fb
+    wrapper/old-epoch-ref: old-epoch
+    wrapper/task-ref: task
+    scheduler/schedule task/delay wrapper
+    true
+]
+
+fiber-reload: func [fb [object!] /local old-epoch result] [
+    old-epoch: fb/epoch
+    ; After unload store becomes none, rebuild it before snapshotting
+    either fb/store [fb/store: copy fb/store][fb/store: make map! []]
+    result: try [fb/runtime/callback/apply fb/ctx fb/config]
+    fiber-complete-reload fb old-epoch result
+]
+
+fiber-finalize-unload: func [fb [object!] /local pending] [
+    runtime-record fb/ctx 'fiber.unload-finalize reduce [
+        'fiber (fiber-tag fb)
+        'epoch fb/epoch
     ]
     fb/store: none
     either none? fb/uid [
         fiber-update-state fb fiber-state/DISPOSED
+        pending: false
     ][
         either fb/error [
             fiber-update-state fb fiber-state/FAILED
+            pending: false
         ][
             either equal? fb/epoch inactive-epoch [
                 fiber-update-state fb fiber-state/PENDING
+                pending: false
             ][
                 ; epoch is not INACTIVE -> reload
                 fiber-update-state fb fiber-state/LOADING
-                fiber-reload fb
+                pending: fiber-reload fb
             ]
         ]
     ]
+    pending
+]
+
+fiber-schedule-unload: func [fb [object!] remaining [block!] task [object!] label [string! none!] /local scheduler wrapper r pending] [
+    scheduler: runtime-scheduler-of fb/ctx
+    unless scheduler [
+        r: try [task/run]
+        if error? r [
+            fb/ctx/logger/error r
+            return fiber-unload-step fb remaining
+        ]
+        return fiber-unload-step fb remaining
+    ]
+    runtime-record fb/ctx 'task.schedule reduce [
+        'fiber (fiber-tag fb)
+        'phase "unload"
+        'delay task/delay
+        'label label
+    ]
+    wrapper: make object! [
+        target-fb: none
+        rest-ref: copy []
+        task-ref: none
+        label-ref: none
+        run: func [/local result pending] [
+            runtime-record target-fb/ctx 'task.run reduce [
+                'fiber (fiber-tag target-fb)
+                'phase "unload"
+                'delay task-ref/delay
+                'label label-ref
+            ]
+            result: try [task-ref/run]
+            either error? result [
+                target-fb/ctx/logger/error result
+                pending: fiber-unload-step target-fb rest-ref
+            ][
+                pending: fiber-unload-step target-fb rest-ref
+            ]
+            if not pending [fiber-release-inertia target-fb]
+            none
+        ]
+    ]
+    wrapper/target-fb: fb
+    wrapper/rest-ref: copy remaining
+    wrapper/task-ref: task
+    wrapper/label-ref: label
+    scheduler/schedule task/delay wrapper
+    true
+]
+
+fiber-unload-step: func [fb [object!] ds [block!] /local d r label] [
+    if empty? ds [return fiber-finalize-unload fb]
+    d: first ds
+    remove ds
+    if in d 'dispose-reason [d/dispose-reason: "unload"]
+    label: either all [select d 'meta  select d/meta 'label] [d/meta/label][none]
+    r: try [d/dispose]
+    if error? r [
+        fb/ctx/logger/error r
+        return fiber-unload-step fb ds
+    ]
+    either scheduled-task? r [
+        fiber-schedule-unload fb ds r label
+    ][
+        fiber-unload-step fb ds
+    ]
+]
+
+fiber-unload: func [fb [object!] /local ds] [
+    ds: fb/disposables/clear
+    fiber-unload-step fb ds
 ]
 
 ; ------------------------------------------------------------

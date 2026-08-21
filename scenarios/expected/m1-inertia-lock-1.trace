@@ -1,0 +1,42 @@
+# snapshots
+t0=LOADING
+t400=LOADING
+t800=LOADING
+t1200=UNLOADING
+t2200=LOADING
+t3200=ACTIVE
+
+# trace
+service.provide | name=foo | fiber="root#0" | scope=default
+service.notify | names=[foo] | scope=default
+event.dispatch | mode=emit | name=internal-service
+effect.register | fiber="root#0" | label="ctx.provide(foo)" | children=0
+fiber.create | fiber="async-consumer#1" | runtime="async-consumer"
+fiber.epoch | fiber="async-consumer#1" | from="__INACTIVE__" | to=":0:0"
+fiber.state | fiber="async-consumer#1" | from="PENDING" | to="LOADING"
+task.schedule | fiber="async-consumer#1" | phase="reload" | delay=1000
+effect.register | fiber="root#0" | label="ctx.plugin()" | children=0
+task.step | delta=400 | from=0 | to=400
+effect.dispose | fiber="root#0" | label="ctx.provide(foo)" | reason="manual"
+service.unprovide | name=foo | fiber="root#0" | scope=default
+service.notify | names=[foo] | scope=default
+fiber.epoch | fiber="async-consumer#1" | from=":0:0" | to="__INACTIVE__"
+event.dispatch | mode=emit | name=internal-service
+task.step | delta=400 | from=400 | to=800
+task.step | delta=400 | from=800 | to=1200
+task.run | fiber="async-consumer#1" | phase="reload" | delay=1000
+fiber.state | fiber="async-consumer#1" | from="LOADING" | to="UNLOADING"
+task.schedule | fiber="async-consumer#1" | phase="unload" | delay=1000 | label=none
+service.provide | name=foo | fiber="root#0" | scope=default
+service.notify | names=[foo] | scope=default
+fiber.epoch | fiber="async-consumer#1" | from="__INACTIVE__" | to=":0:0"
+event.dispatch | mode=emit | name=internal-service
+effect.register | fiber="root#0" | label="ctx.provide(foo)" | children=0
+task.step | delta=1000 | from=1200 | to=2200
+task.run | fiber="async-consumer#1" | phase="unload" | delay=1000 | label=none
+fiber.unload-finalize | fiber="async-consumer#1" | epoch=":0:0"
+fiber.state | fiber="async-consumer#1" | from="UNLOADING" | to="LOADING"
+task.schedule | fiber="async-consumer#1" | phase="reload" | delay=1000
+task.step | delta=1000 | from=2200 | to=3200
+task.run | fiber="async-consumer#1" | phase="reload" | delay=1000
+fiber.state | fiber="async-consumer#1" | from="LOADING" | to="ACTIVE"

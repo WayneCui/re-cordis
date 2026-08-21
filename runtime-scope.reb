@@ -11,6 +11,7 @@ REBOL []
 
 do %./utils.reb
 do %./lifecycle-journal.reb
+do %./deterministic-scheduler.reb
 
 ; Legacy compatibility only. New contexts should attach runtime-scope-ref.
 all-fibers: copy []
@@ -37,6 +38,7 @@ make-runtime-scope: func [root-ctx [object!] /local scope] [
         root-ctx: root-ctx
         fibers: copy []
         journal: none
+        scheduler: none
     ]
     scope/journal: make-lifecycle-journal root-ctx
     scope
@@ -46,6 +48,7 @@ legacy-runtime-scope: make object! [
     root-ctx: none
     fibers: all-fibers
     journal: none
+    scheduler: none
 ]
 
 ctx-runtime-scope: func [ctx [object! none!] /local root scope] [
@@ -96,4 +99,29 @@ runtime-clear-trace: func [ctx [object! none!] /local journal] [
 runtime-trace-lines: func [ctx [object! none!] /local journal] [
     journal: runtime-journal-of ctx
     either journal [journal/trace-lines][copy []]
+]
+
+runtime-scheduler-of: func [ctx [object! none!] /local scope] [
+    scope: ctx-runtime-scope ctx
+    select scope 'scheduler
+]
+
+runtime-use-scheduler: func [ctx [object!] scheduler [object!] /local scope] [
+    scope: ctx-runtime-scope ctx
+    scope/scheduler: scheduler
+    scheduler
+]
+
+runtime-step: func [ctx [object!] delta [integer!] /local scheduler] [
+    scheduler: runtime-scheduler-of ctx
+    unless scheduler [return none]
+    runtime-record ctx 'task.step reduce ['delta delta 'from scheduler/now 'to (scheduler/now + delta)]
+    scheduler/step delta
+]
+
+runtime-flush: func [ctx [object!] /local scheduler] [
+    scheduler: runtime-scheduler-of ctx
+    unless scheduler [return none]
+    runtime-record ctx 'task.flush reduce ['from scheduler/now]
+    scheduler/flush
 ]
