@@ -72,12 +72,14 @@ make-events-service: func [root-ctx [object!] /local svc ilw] [
             hooks: select self/hooks name
             unless hooks [return copy []]
             result: copy []
-            filter-w: none
-            if this-arg [filter-w: select this-arg 'filter]
             foreach hook hooks [
-                either any [hook/global  none? filter-w] [
+                either any [
+                    hook/global
+                    not all [this-arg  not none? select this-arg 'filter]
+                ] [
                     append result hook/cb
                 ][
+                    filter-w: select this-arg 'filter
                     if do reduce [filter-w hook/ctx] [append result hook/cb]
                 ]
             ]
