@@ -13,12 +13,17 @@ REBOL []
 ;   - thisArg (Session/Filter) is parsed from the first element of args (shift if object!)
 ;   - filter field = word! name (function name), invoked through do reduce
 ;   - waterfall next = self-contained wrapper object, inner = word! name
+;     inner / listeners may return a thenable (thenable.reb); next/call
+;     propagates that value unchanged. Callers that need a ready result
+;     use thenable-wait. Sync listeners that add numbers to next/call
+;     remain valid only when the remainder is sync.
 ;   - parallel is synchronized: return an aggregated error block (upstream AggregateError)
 ;   - serial/bail are synchronized: return the first is-bailed result
 ;   - register is wired through ctx/fiber/effect (auto-cleaned when the fiber unloads)
 ; ============================================================
 
 do %./utils.reb
+do %./thenable.reb
 do %./runtime-scope.reb
 
 ; ------------------------------------------------------------
