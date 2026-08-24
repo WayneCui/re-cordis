@@ -109,6 +109,23 @@ map!/block! 存 function! 会自动求值 → **一切回调存为 object! 方�
 (`make object! [call: func [args [block!]] [...]]`), 或存 word! 名间接调用。
 disposer 同理: `make object! [dispose: func [][...]]`。
 
+### 4.8 R3 行为陷阱 (Phase 5–6 实测)
+
+1. **`do %file` 的嵌套相对路径会 rebase 到该脚本所在目录**。fixture 里再 `do`
+   别的文件要用 `%../../agent-loop/api.reb` 这种相对自身目录的前缀, 不能假设
+   继承调用者的 cwd。reload fixture / 测试脚本都受影响。
+2. **`make map! [...]` 不求值 spec**: paren 原样存成 paren!, `'lit-word` 存成
+   lit-word。需要求值用 `make map! compose [...]`; 测试里构造消息 map 一律用
+   `put m 'kind 'tool-call` 逐键赋值, 别用 spec 块。
+3. **函数参数无自动分组**: `put handle to-word name svc` 会把 `to-word` 这个
+   函数本身当第二个参数, `name` 当第三个, `svc` 悬空——静默写错键。复合表达式
+   作参数必须加括号: `put handle (to-word name) svc`。
+4. **`make object!` 后给不存在的字段赋值报 invalid-path**: `make-service` 内部
+   写 `svc-obj/name:`, 所以自定义 service object 必须预声明 `name: none`
+   (llm 适配器 fixture 踩过)。
+5. **r3 `print` 输出 UTF-8 中文到终端变 `?`**: examples 的 stdout 文案用英文,
+   注释保留中文。
+
 ## 5. 实施阶段
 
 | 阶段 | 交付 | 验证 (移植自 spec) |
