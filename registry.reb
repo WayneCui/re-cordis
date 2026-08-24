@@ -81,6 +81,44 @@ make-registry-service: func [root-ctx [object!] /local svc] [
             rt
         ]
 
+        ; ---- reload: swap a named plugin's fibers for a new callback ----
+        ; Old fibers are disposed (effects unwind: services unprovide, listeners detach),
+        ; then the new plugin mounts under each old fiber's parent ctx with its config.
+        ; On mount failure the old callback is re-mounted (rollback).
+        find-runtime-by-name: func [name [string!] /local rt] [
+            foreach rt self/runtimes [
+                if equal? rt/name name [return rt]
+            ]
+            none
+        ]
+
+        reload: func [name [string!] new-plugin [object!] /local rt old-callback mounts result m] [
+            unless all [object? new-plugin in new-plugin 'apply] [
+                return "[RegistryError] reload: new plugin must be an object with apply"
+            ]
+            rt: find-runtime-by-name name
+            unless rt [
+                return rejoin ["[RegistryError] reload: plugin not found: " name]
+            ]
+            old-callback: rt/callback
+            mounts: copy []
+            foreach fb rt/fibers/values [
+                append/only mounts reduce [fb/config fb/parent]
+            ]
+            self/delete old-callback
+            result: none
+            foreach m mounts [
+                result: self/plugin new-plugin m/1 m/2
+                if string? result [break]
+            ]
+            either string? result [
+                foreach m mounts [self/plugin old-callback m/1 m/2]
+                result
+            ][
+                true
+            ]
+        ]
+
         ; ---- plugin registration ----
         ; ctx parameter: explicit caller ctx (upstream traceable is implicit, Rebol is explicit; default is root)
         plugin: func [plugin [object!] config ctx [object! none!] /local callback rt inject-map fb r act-ctx] [

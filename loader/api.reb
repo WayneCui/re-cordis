@@ -51,3 +51,27 @@ dump-entry-block: func [entries [block!] /local out item] [
     ]
     trim out
 ]
+
+; ------------------------------------------------------------
+; reload-plugin — homomorphic hot swap: do path, then registry/reload.
+; The file must evaluate to a plugin object (name/inject/apply).
+; Load or shape failure keeps the old plugin untouched.
+; ------------------------------------------------------------
+reload-plugin: func [
+    ctx [object!]
+    name [string!]
+    path [file!]
+    /local new-plugin
+] [
+    unless exists? path [
+        return rejoin ["[LoaderError] reload: file not found: " mold path]
+    ]
+    new-plugin: try [do path]
+    if error? new-plugin [
+        return rejoin ["[LoaderError] reload: cannot load " mold path " — old plugin kept"]
+    ]
+    unless all [object? new-plugin in new-plugin 'apply] [
+        return rejoin ["[LoaderError] reload: " mold path " did not yield a plugin — old plugin kept"]
+    ]
+    ctx/registry/reload name new-plugin
+]
