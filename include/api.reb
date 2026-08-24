@@ -31,6 +31,24 @@ entry-group?: func [entry [map!]] [
     true? any [select entry 'group select entry "group"]
 ]
 
+; Entry mount target resolution: YAML `isolate` field.
+; isolate: map! [service label ...] -> ctx/isolate for each pair
+; intercept: reserved — config-intercept chain is not consumed by harness-spine services yet.
+entry-mount-ctx: func [ctx [object!] entry [map!] /local isolate-map intercept-map k v target] [
+    target: ctx
+    isolate-map: any [select entry 'isolate select entry "isolate"]
+    if map? isolate-map [
+        foreach [k v] isolate-map [
+            target: target/isolate k either none? v [none][to-word v]
+        ]
+    ]
+    intercept-map: any [select entry 'intercept select entry "intercept"]
+    if map? intercept-map [
+        include-warn-msg rejoin ["entry " any [select entry 'id ""] ": intercept is parsed but not consumed; ignoring"]
+    ]
+    target
+]
+
 entry-disabled?: func [entry [map!]] [
     val: any [select entry 'disabled select entry "disabled"]
     either none? val [false][

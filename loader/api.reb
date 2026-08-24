@@ -23,7 +23,7 @@ mount-entry-list: func [
     ctx [object!]
     entries [block!]
     plugin-map [map!]
-    /local item plugin plugin-name cfg sub
+    /local item plugin plugin-name cfg sub target
 ] [
     foreach item entries [
         if entry-disabled? item [continue]
@@ -38,7 +38,8 @@ mount-entry-list: func [
             loader-error rejoin ["unknown plugin: " mold plugin-name]
         ]
         cfg: entry-config-of item
-        ctx/registry/plugin plugin any [cfg none] ctx
+        target: entry-mount-ctx ctx item
+        target/registry/plugin plugin any [cfg none] target
     ]
     none
 ]

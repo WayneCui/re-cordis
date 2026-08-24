@@ -65,22 +65,26 @@ yaml-active-map: func [stack [block!]] [
     none
 ]
 
-yaml-parse-entry-yaml: func [text [string!] /local lines stack line indent content top rest kv key val entry nested parent kind current config-target] [
+yaml-parse-entry-yaml: func [text [string!] /local lines stack line indent content top rest kv key val entry nested parent kind current config-target nested-key nested-target] [
     entries: copy []
     current: none
     config-target: none
+    nested-key: none
+    nested-target: none
 
     foreach line split text newline [
-        trimmed: trim line
+        trimmed: trim copy line
         if empty? trimmed [continue]
         if trimmed/1 = #"#" [continue]
 
         indent: length? yaml-trim-indent line
-        content: trim either indent > 0 [copy/part line (indent + 1)][line]
+        content: trim either indent > 0 [copy skip line indent][line]
 
         either content/1 = #"-" [
             current: make map! []
             config-target: none
+            nested-key: none
+            nested-target: none
             append entries current
             rest: trim copy skip content 1
             if kv: yaml-split-key-val rest [
@@ -93,17 +97,37 @@ yaml-parse-entry-yaml: func [text [string!] /local lines stack line indent conte
             val: pick kv 2
             unless map? current [continue]
             either all [string? val  empty? val] [
-                if equal? form key "config" [
+                either equal? form key "config" [
                     nested: either entry-group? current [copy []][make map! []]
                     yaml-put-key current 'config nested
                     config-target: either block? nested [none][nested]
+                    nested-key: none
+                    nested-target: none
                 ][
-                    yaml-put-key current key (make map! [])
+                    either any [equal? form key "isolate"  equal? form key "intercept"] [
+                        nested: make map! []
+                        yaml-put-key current key nested
+                        nested-key: key
+                        nested-target: nested
+                        config-target: none
+                    ][
+                        nested: make map! []
+                        yaml-put-key current key nested
+                        nested-key: key
+                        nested-target: nested
+                        config-target: none
+                    ]
                 ]
             ][
-                target: either map? config-target [config-target][current]
-                unless map? target [continue]
-                yaml-put-key target key yaml-parse-scalar val
+                either all [map? nested-target  indent >= 2] [
+                    yaml-put-key nested-target key yaml-parse-scalar val
+                ][
+                    either map? config-target [
+                        yaml-put-key config-target key yaml-parse-scalar val
+                    ][
+                        yaml-put-key current key yaml-parse-scalar val
+                    ]
+                ]
             ]
         ]
     ]
