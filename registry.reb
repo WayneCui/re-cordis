@@ -92,7 +92,7 @@ make-registry-service: func [root-ctx [object!] /local svc] [
             none
         ]
 
-        reload: func [name [string!] new-plugin [object!] /local rt old-callback mounts result m] [
+        reload: func [name [string!] new-plugin [object!] /local rt old-callback mounts result m fb] [
             unless all [object? new-plugin in new-plugin 'apply] [
                 return "[RegistryError] reload: new plugin must be an object with apply"
             ]
@@ -106,17 +106,23 @@ make-registry-service: func [root-ctx [object!] /local svc] [
                 append/only mounts reduce [fb/config fb/parent]
             ]
             self/delete old-callback
-            result: none
+            result: true
             foreach m mounts [
-                result: self/plugin new-plugin m/1 m/2
-                if string? result [break]
+                fb: self/plugin new-plugin m/1 m/2
+                if string? fb [
+                    result: fb
+                    break
+                ]
+                if any [fb/error equal? fb/state fiber-state/FAILED] [
+                    result: rejoin ["[RegistryError] reload: new plugin failed to start: " mold any [fb/error ""]]
+                    break
+                ]
             ]
-            either string? result [
+            unless equal? result true [
+                self/delete new-plugin
                 foreach m mounts [self/plugin old-callback m/1 m/2]
-                result
-            ][
-                true
             ]
+            result
         ]
 
         ; ---- plugin registration ----
