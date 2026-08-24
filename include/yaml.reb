@@ -97,25 +97,33 @@ yaml-parse-entry-yaml: func [text [string!] /local lines stack line indent conte
             val: pick kv 2
             unless map? current [continue]
             either all [string? val  empty? val] [
-                either equal? form key "config" [
-                    nested: either entry-group? current [copy []][make map! []]
-                    yaml-put-key current 'config nested
-                    config-target: either block? nested [none][nested]
-                    nested-key: none
-                    nested-target: none
+                either all [map? nested-target  indent >= 2] [
+                    ; Nested map under isolate/intercept, e.g. intercept.agent-loop.max-steps
+                    nested: make map! []
+                    yaml-put-key nested-target key nested
+                    nested-target: nested
+                    config-target: none
                 ][
-                    either any [equal? form key "isolate"  equal? form key "intercept"] [
-                        nested: make map! []
-                        yaml-put-key current key nested
-                        nested-key: key
-                        nested-target: nested
-                        config-target: none
+                    either equal? form key "config" [
+                        nested: either entry-group? current [copy []][make map! []]
+                        yaml-put-key current 'config nested
+                        config-target: either block? nested [none][nested]
+                        nested-key: none
+                        nested-target: none
                     ][
-                        nested: make map! []
-                        yaml-put-key current key nested
-                        nested-key: key
-                        nested-target: nested
-                        config-target: none
+                        either any [equal? form key "isolate"  equal? form key "intercept"] [
+                            nested: make map! []
+                            yaml-put-key current key nested
+                            nested-key: key
+                            nested-target: nested
+                            config-target: none
+                        ][
+                            nested: make map! []
+                            yaml-put-key current key nested
+                            nested-key: key
+                            nested-target: nested
+                            config-target: none
+                        ]
                     ]
                 ]
             ][

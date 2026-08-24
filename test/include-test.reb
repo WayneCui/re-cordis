@@ -49,5 +49,19 @@ sub: entry-config-of first inserted
 assert equal? 1 length? sub "insert into group"
 assert equal? "child" (entry-id-of (first sub)) "inserted child id"
 
+nested-yaml: {
+- id: llm
+  name: llm
+  intercept:
+    agent-loop:
+      max-steps: 2
+}
+nested-entries: yaml-parse-entry-yaml nested-yaml
+ic: select first nested-entries 'intercept
+assert map? ic "intercept parsed as map"
+al: select ic 'agent-loop
+assert map? al "intercept.agent-loop is a map"
+assert equal? 2 select al 'max-steps "nested max-steps integer"
+
 print rejoin ["^/==== include-test: " passed " passed, " failed " failed ===="]
 if failed > 0 [quit 1]

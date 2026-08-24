@@ -31,10 +31,12 @@ entry-group?: func [entry [map!]] [
     true? any [select entry 'group select entry "group"]
 ]
 
-; Entry mount target resolution: YAML `isolate` field.
+; Entry mount target resolution: YAML `isolate` / `intercept` fields.
 ; isolate: map! [service label ...] -> ctx/isolate for each pair
-; intercept: reserved — config-intercept chain is not consumed by harness-spine services yet.
-entry-mount-ctx: func [ctx [object!] entry [map!] /local isolate-map intercept-map k v target] [
+; intercept: map! [service config-map ...] -> prepend-intercept (in-place, no new logger).
+;   Applied on the (possibly isolated) mount ctx so descendants that copy intercept-chain
+;   see it — e.g. agent-loop created later from root.
+entry-mount-ctx: func [ctx [object!] entry [map!] /local isolate-map intercept-map k v target name cfg] [
     target: ctx
     isolate-map: any [select entry 'isolate select entry "isolate"]
     if map? isolate-map [
@@ -44,7 +46,23 @@ entry-mount-ctx: func [ctx [object!] entry [map!] /local isolate-map intercept-m
     ]
     intercept-map: any [select entry 'intercept select entry "intercept"]
     if map? intercept-map [
-        include-warn-msg rejoin ["entry " any [select entry 'id ""] ": intercept is parsed but not consumed; ignoring"]
+        foreach [k v] intercept-map [
+            name: either word? k [k][to-word form k]
+            cfg: v
+            if not map? cfg [
+                ; scalar `logger: debug` -> logger name overlay
+                either equal? name 'logger [
+                    cfg: make map! []
+                    put cfg 'name either word? v [v][to-word form v]
+                ][
+                    include-warn-msg rejoin ["entry " any [select entry 'id ""] ": intercept " form name " skipped (need a map)"]
+                    cfg: none
+                ]
+            ]
+            if map? cfg [
+                target: target/prepend-intercept name cfg
+            ]
+        ]
     ]
     target
 ]

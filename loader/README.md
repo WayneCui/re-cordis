@@ -13,6 +13,8 @@
 | `config` | 传给 `registry/plugin` 的 map |
 | `group` | 真 → `config` 为子 entry 块 |
 | `disabled` | 真 → 跳过挂载 |
+| `isolate` | `service: label` 挂到隔离 ctx |
+| `intercept` | `service: {config}` 前置到 ctx intercept-chain；`llm`/`agent-loop` 经 `service-resolve-config` 消费 |
 
 ## API
 

@@ -65,6 +65,16 @@ make-child-ctx: func [root-ctx [object! none!] props [map!] /local new root-ref]
             put props 'intercept-chain chain
             extend props
         ]
+
+        ; In-place intercept: same chain prepend as intercept/, no new Context / logger.
+        ; YAML assembly uses this so later isolate/extend copies the chain.
+        prepend-intercept: func [name [word!] config /local m] [
+            unless map? config [return self]
+            m: make map! []
+            put m name config
+            self/intercept-chain: compose [(m) (self/intercept-chain)]
+            self
+        ]
     ]
     either root-ctx [
         ; Inherit the parent's isolate/intercept chains (core isolation semantics)
