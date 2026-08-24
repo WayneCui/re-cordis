@@ -5,6 +5,7 @@ REBOL []
 ; ============================================================
 
 do %yaml.reb
+do %layer.reb
 
 include-warn: func [msg [string!]] [
     print rejoin ["[include warn] " msg]
@@ -32,7 +33,13 @@ entry-group?: func [entry [map!]] [
 
 entry-disabled?: func [entry [map!]] [
     val: any [select entry 'disabled select entry "disabled"]
-    either none? val [false][true? val]
+    either none? val [false][
+        either word? val [
+            equal? val 'true
+        ][
+            true? val
+        ]
+    ]
 ]
 
 build-entry-index: func [entries [block!] /local map entry id sub child] [
@@ -59,9 +66,82 @@ read-entry-yaml: func [path [file!]] [
     yaml-parse-entry-yaml to-string read path
 ]
 
-normalize-patch-block: func [items [block!]] [
+; Evaluate loaded patch rows: bare maps, or unevaluated make map! / compose from load/all.
+run-make-expr: func [expr [block!] /local third] [
+    unless all [
+        block? expr
+        greater? length? expr 2
+        equal? pick expr 1 'make
+        equal? pick expr 2 'map!
+    ] [return none]
+    third: pick expr 3
+    either equal? third 'compose [
+        unless greater? length? expr 3 [return none]
+        make map! compose pick expr 4
+    ][
+        either block? third [
+            make map! third
+        ][
+            none
+        ]
+    ]
+]
+
+eval-insert-expr: func [expr [block!] /local val] [
+    if map? expr [return expr]
+    val: try [run-make-expr expr]
+    if error? val [return none]
+    val
+]
+
+normalize-insert-block: func [items [block!] /local result i n expr val item] [
     if empty? items [return items]
-    either map? first items [items][reduce items]
+    result: copy []
+    i: 1
+    n: length? items
+    while [i <= n] [
+        item: pick items i
+        either map? item [
+            append result item
+            i: i + 1
+        ][
+            either equal? item 'make [
+                expr: copy []
+                while [i <= n] [
+                    item: pick items i
+                    if all [
+                        greater? length? expr 0
+                        equal? item 'make
+                    ] [break]
+                    append/only expr item
+                    i: i + 1
+                ]
+                val: eval-insert-expr expr
+                if map? val [append result val]
+            ][
+                val: try [do item]
+                if map? val [append result val]
+                i: i + 1
+            ]
+        ]
+    ]
+    result
+]
+
+normalize-patch-block: func [items [block!] /local patches ins key] [
+    if empty? items [return items]
+    patches: normalize-insert-block items
+    foreach patch patches [
+        ins: any [select patch 'insert select patch "insert"]
+        if paren? ins [ins: do ins]
+        if map? ins [ins: copy [ins]]
+        if block? ins [
+            ins: normalize-insert-block ins
+            key: either find patch 'insert ['insert]["insert"]
+            put patch key ins
+        ]
+    ]
+    patches
 ]
 
 normalize-patches: func [patches [block! none!]] [
@@ -70,11 +150,19 @@ normalize-patches: func [patches [block! none!]] [
     normalize-patch-block patches
 ]
 
-load-reb-patches: func [path [file!]] [
+load-reb-patches: func [path [file!] /local patches parsed] [
     unless exists? path [
         cause-error 'user 'message rejoin ["patch file not found: " mold path]
     ]
-    patches: do path
+    parsed: try [load/all to-string read path]
+    if error? parsed [
+        cause-error 'user 'message rejoin ["patch file unreadable: " mold path]
+    ]
+    if all [block? parsed  not empty? parsed] [
+        patches: either block? first parsed [first parsed][parsed]
+    ][
+        patches: copy []
+    ]
     unless block? patches [
         cause-error 'user 'message rejoin ["patch file must return block: " mold path]
     ]
@@ -120,6 +208,8 @@ apply-entry-patches: func [
         unless map? patch [continue]
         patch-id: any [select patch 'id select patch "id"]
         patch-insert: select patch 'insert
+        if none? patch-insert [patch-insert: select patch "insert"]
+        if paren? patch-insert [patch-insert: reduce patch-insert]
         patch-name: any [select patch 'name select patch "name"]
 
         if block? patch-insert [
@@ -138,7 +228,7 @@ apply-entry-patches: func [
                     sub: copy []
                     yaml-put-key target 'config sub
                 ]
-                append sub normalize-patch-block patch-insert
+                append sub normalize-insert-block patch-insert
                 foreach [k v] build-entry-index patch-insert [put index k v]
             ][
                 append data patch-insert
