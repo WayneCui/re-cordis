@@ -20,9 +20,34 @@
 
 | 函数 | 语义 |
 |------|------|
-| `mount-entry-list` | 递归挂载 |
+| `mount-entry-list` | 递归挂载；全量，不做增量 |
 | `dump-entry-block` | YAML 风格打印（供 `--dump-config`） |
 | `reload-plugin ctx name path` | 同像热替换：`do path` 得到新插件 → `registry/reload` 换名下的 fiber；加载失败或形状不对时旧插件原样保留 |
+| `make-entry-reconciler root plugin-map` | **M2** 按稳定 `id` 增量 reconcile（`loader/reconcile.reb`） |
+
+## Entry Reconciler（M2）
+
+与 `mount-entry-list` 并列：后者全量挂载，前者按 id diff。
+
+```
+r: make-entry-reconciler root plugin-map
+r/reconcile entries
+r/get "a"             ; handle: options / fiber / mount-ctx / parent-id / child-ids
+r/size
+r/stop
+```
+
+| 情况 | 行为 |
+|------|------|
+| 同 id + options 深相等 | 保持（不 remount） |
+| 仅 `config`（及非身份字段）变化 | leaf 走 `fiber/update`；group 只改 options |
+| `name` / `isolate` / `intercept` / `inject` / `group` 变化，或 parent 移动 | dispose + remount |
+| desired 中消失，或 `disabled` | dispose 子树 |
+| `group` | 无 fiber；子节点挂到 group 的 `mount-ctx`（比 `mount-entry-list` 对 group 更完整） |
+
+无 `id` 时写入合成键 `"reconcile-id"`（Rebol word 不能含 `$`）。
+
+验收：`test/reconcile-test.reb`、`scenarios/m2-reconcile.reb`。
 
 ## reload 语义
 

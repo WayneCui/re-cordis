@@ -172,6 +172,15 @@ disposer 同理: `make object! [dispose: func [][...]]`。
 6. **LIFO 清理语义** (上游 cordis): fiber 卸载 = disposables 逆序执行; 父插件
    disposer 先于子插件卸载 — 移植测试时不要按"子先于父"直觉断言
 
+## 6.5 生命周期研究里程碑
+
+| 里程碑 | 状态 | 说明 |
+|---|---|---|
+| M0 runtime scope / journal | ✅ | `runtime-scope.reb` + scenarios/m0-* |
+| M1 deterministic scheduler | ✅ | inertia / failure / reentrant / effect-tree |
+| **M2 Entry Reconciler** | ✅ | `loader/reconcile.reb`：按稳定 id 增量 mount/update/dispose；`test/reconcile-test.reb` 27/27 |
+| M3 dual-mode HMR | ⏳ | `reload-plugin` 已有原子回滚；兼容 FAILED 模式未做 |
+
 ## 7. 已知限制 (v1 同步版)
 
 - 无 Promise: `fiber.await()`/`plugin()` 的 thenable 语义 → 同步执行; async init
